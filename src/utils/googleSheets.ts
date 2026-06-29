@@ -320,6 +320,95 @@ export const parseCSV = (text: string): string[][] => {
 };
 
 /**
+ * Definitions for CORS Proxies to use sequentially
+ */
+const PROXIES = [
+  {
+    name: 'corsproxy.io',
+    getUrl: (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    parse: (text: string) => text
+  },
+  {
+    name: 'codetabs.com',
+    getUrl: (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+    parse: (text: string) => text
+  },
+  {
+    name: 'allorigins.win',
+    getUrl: (url: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+    parse: (text: string) => {
+      try {
+        const json = JSON.parse(text);
+        return json.contents || '';
+      } catch (e) {
+        return text;
+      }
+    }
+  }
+];
+
+/**
+ * Sequential proxy fetch helper for HTML pages (htmlview/pubhtml)
+ */
+const fetchPublicHtmlWithProxies = async (spreadsheetId: string): Promise<string> => {
+  const htmlViewUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/htmlview`;
+  const pubHtmlUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/pubhtml`;
+  const urlsToTry = [htmlViewUrl, pubHtmlUrl];
+  
+  let lastError: Error = new Error('Tất cả các dịch vụ proxy đều không thể kết nối tới Google Sheets.');
+
+  for (const targetUrl of urlsToTry) {
+    for (const proxy of PROXIES) {
+      try {
+        console.log(`[Scraper] Đang thử tải danh sách Sheet từ ${targetUrl} qua ${proxy.name}...`);
+        const proxyUrl = proxy.getUrl(targetUrl);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 7000);
+        
+        const response = await fetch(proxyUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          const rawText = await response.text();
+          const parsedHtml = proxy.parse(rawText);
+          
+          if (parsedHtml && parsedHtml.trim()) {
+            if (
+              parsedHtml.includes('ServiceLogin') || 
+              parsedHtml.includes('accounts.google.com') || 
+              parsedHtml.includes('Sign in - Google Accounts') ||
+              parsedHtml.includes('DocSignIn')
+            ) {
+              throw new Error(
+                'Bảng tính này đang ở chế độ riêng tư (Private). Vui lòng mở Google Sheets, nhấn nút "Chia sẻ" (Share) ở góc trên bên phải, chuyển quyền truy cập thành "Bất kỳ ai có liên kết đều có thể xem" (Anyone with link can view) rồi thử lại.'
+              );
+            }
+            
+            if (
+              parsedHtml.includes('sheet-button-') || 
+              parsedHtml.includes('sheetId') || 
+              parsedHtml.includes('gid=') ||
+              parsedHtml.includes('class="grid-container"')
+            ) {
+              return parsedHtml;
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn(`[Scraper] Proxy ${proxy.name} thất bại khi tải ${targetUrl}:`, err);
+        if (err.message && err.message.includes('bản tính này đang ở chế độ riêng tư')) {
+          throw err;
+        }
+        lastError = err;
+      }
+    }
+  }
+
+  throw lastError;
+};
+
+/**
  * Fetches Sheet metadata and data dynamically using Sheets API
  */
 export const fetchGoogleSheetData = async (
@@ -329,112 +418,144 @@ export const fetchGoogleSheetData = async (
 ): Promise<{ sheetName: string; packages: BidPackage[] }> => {
   const publicUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
   
-  // Attempt 1: Fetch via Allorigins CORS Proxy (lightning fast, bypasses Google Cloud Console disabled API & verification issues)
-  try {
-    console.log('Attempting to fetch Google Sheet data via Allorigins CORS proxy...');
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(publicUrl)}`;
-    const response = await fetch(proxyUrl);
-    if (response.ok) {
-      const json = await response.json();
-      if (json && typeof json.contents === 'string' && json.contents.trim()) {
-        const rows = parseCSV(json.contents);
-        if (rows.length > 0) {
-          const packages = parseSheetData(rows);
-          console.log('Successfully fetched and parsed data via Allorigins proxy!');
-          return {
-            sheetName: 'Bảng tính (Đồng bộ qua Allorigins)',
-            packages
-          };
+  // Attempt 1: Fetch via Public CORS proxies (sequential fallback)
+  let lastProxyError: Error | null = null;
+  for (const proxy of PROXIES) {
+    try {
+      console.log(`[CSV Sync] Đang thử tải dữ liệu CSV của GID ${gid} qua ${proxy.name}...`);
+      const proxyUrl = proxy.getUrl(publicUrl);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const response = await fetch(proxyUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const rawText = await response.text();
+        const csvContent = proxy.parse(rawText);
+
+        if (csvContent && csvContent.trim()) {
+          if (
+            csvContent.includes('ServiceLogin') || 
+            csvContent.includes('accounts.google.com') || 
+            csvContent.includes('Sign in - Google Accounts') ||
+            csvContent.includes('DocSignIn')
+          ) {
+            throw new Error(
+              'Bảng tính đang ở chế độ riêng tư. Vui lòng mở Google Sheets và cấu hình chia sẻ: "Bất kỳ ai có liên kết đều có thể xem".'
+            );
+          }
+
+          const rows = parseCSV(csvContent);
+          if (rows.length > 0) {
+            const packages = parseSheetData(rows);
+            if (packages.length === 0) {
+              throw new Error(
+                'Không tìm thấy cột tiêu đề thầu hợp lệ (Cần có ít nhất cột: "Mã gói thầu", "Tên gói thầu", "Trạng thái", "Tiến độ"). Vui lòng kiểm tra lại dòng tiêu đề đầu tiên.'
+              );
+            }
+            console.log(`[CSV Sync] Tải thành công ${packages.length} gói thầu từ Google Sheets qua ${proxy.name}!`);
+            return {
+              sheetName: `Trang tính (Đồng bộ qua ${proxy.name})`,
+              packages
+            };
+          }
         }
       }
+    } catch (err: any) {
+      console.warn(`[CSV Sync] Proxy ${proxy.name} thất bại:`, err);
+      if (err.message && (err.message.includes('riêng tư') || err.message.includes('tiêu đề thầu'))) {
+        throw err;
+      }
+      lastProxyError = err;
     }
-  } catch (proxyError) {
-    console.warn('Allorigins proxy fetch failed, falling back to other methods...', proxyError);
   }
 
   // Attempt 2: Fallback to standard authenticated Google Sheets API (if accessToken is valid and API is enabled)
   let apiError: Error | null = null;
-  try {
-    console.log('Attempting to fetch via standard authenticated Google Sheets API...');
-    // 1. Fetch spreadsheet metadata to map GID to Sheet Name
-    const metaResponse = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets(properties(sheetId,title))`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
-
-    if (!metaResponse.ok) {
-      let detail = '';
-      try {
-        const errJson = await metaResponse.json();
-        if (errJson?.error?.message) {
-          detail = errJson.error.message;
+  if (accessToken) {
+    try {
+      console.log('Attempting to fetch via standard authenticated Google Sheets API...');
+      // 1. Fetch spreadsheet metadata to map GID to Sheet Name
+      const metaResponse = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets(properties(sheetId,title))`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
         }
-      } catch (e) {}
+      );
 
-      let friendlyMessage = `Lỗi kết nối API Google Sheets (${metaResponse.status})`;
-      if (metaResponse.status === 403) {
-        if (detail.includes('API has not been used in project') || detail.includes('disabled')) {
-          friendlyMessage += `: Google Sheets API chưa được bật trong Google Cloud Console của dự án Firebase của bạn. Vui lòng vào Cloud Console và Kích hoạt (Enable) API này.`;
-        } else {
-          friendlyMessage += `: Chưa được cấp quyền truy cập. Cách khắc phục: Hãy nhấn "Ngắt kết nối Google" (dưới cùng menu trái) và đăng nhập lại, lưu ý tích chọn hộp kiểm "Xem các bảng tính của bạn trên Google Drive" ở bước cấp quyền cuối cùng.`;
+      if (!metaResponse.ok) {
+        let detail = '';
+        try {
+          const errJson = await metaResponse.json();
+          if (errJson?.error?.message) {
+            detail = errJson.error.message;
+          }
+        } catch (e) {}
+
+        let friendlyMessage = `Lỗi kết nối API Google Sheets (${metaResponse.status})`;
+        if (metaResponse.status === 403) {
+          if (detail.includes('API has not been used in project') || detail.includes('disabled')) {
+            friendlyMessage += `: Google Sheets API chưa được bật trong Google Cloud Console của dự án Firebase của bạn. Vui lòng vào Cloud Console và Kích hoạt (Enable) API này.`;
+          } else {
+            friendlyMessage += `: Chưa được cấp quyền truy cập. Cách khắc phục: Hãy dán liên kết chia sẻ công khai và chọn sheet.`;
+          }
+        } else if (metaResponse.status === 404) {
+          friendlyMessage += `: Không tìm thấy file Google Sheet. Vui lòng kiểm tra lại mã ID bảng tính (Spreadsheet ID) xem đã chính xác chưa.`;
+        } else if (detail) {
+          friendlyMessage += `: ${detail}`;
         }
-      } else if (metaResponse.status === 404) {
-        friendlyMessage += `: Không tìm thấy file Google Sheet. Vui lòng kiểm tra lại mã ID bảng tính (Spreadsheet ID) xem đã chính xác chưa.`;
-      } else if (detail) {
-        friendlyMessage += `: ${detail}`;
+        throw new Error(friendlyMessage);
       }
-      throw new Error(friendlyMessage);
-    }
 
-    const metaData = await metaResponse.json();
-    const sheets = metaData.sheets || [];
-    
-    // Find sheet with the given GID
-    const targetSheet = sheets.find(
-      (s: any) => String(s.properties?.sheetId) === String(gid)
-    );
+      const metaData = await metaResponse.json();
+      const sheets = metaData.sheets || [];
+      
+      // Find sheet with the given GID
+      const targetSheet = sheets.find(
+        (s: any) => String(s.properties?.sheetId) === String(gid)
+      );
 
-    const sheetName = targetSheet ? targetSheet.properties.title : sheets[0]?.properties?.title || 'Sheet1';
+      const sheetName = targetSheet ? targetSheet.properties.title : sheets[0]?.properties?.title || 'Sheet1';
 
-    // 2. Fetch the values of the sheet
-    // We use a large range (A1:AZ500) to get all data
-    const valuesResponse = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}!A1:AZ500`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
-
-    if (!valuesResponse.ok) {
-      let detail = '';
-      try {
-        const errJson = await valuesResponse.json();
-        if (errJson?.error?.message) {
-          detail = errJson.error.message;
+      // 2. Fetch the values of the sheet
+      // We use a large range (A1:AZ500) to get all data
+      const valuesResponse = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}!A1:AZ500`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
         }
-      } catch (e) {}
+      );
 
-      let friendlyMessage = `Lỗi tải dữ liệu bảng tính ${sheetName} (${valuesResponse.status})`;
-      if (detail) {
-        friendlyMessage += `: ${detail}`;
+      if (!valuesResponse.ok) {
+        let detail = '';
+        try {
+          const errJson = await valuesResponse.json();
+          if (errJson?.error?.message) {
+            detail = errJson.error.message;
+          }
+        } catch (e) {}
+
+        let friendlyMessage = `Lỗi tải dữ liệu bảng tính ${sheetName} (${valuesResponse.status})`;
+        if (detail) {
+          friendlyMessage += `: ${detail}`;
+        }
+        throw new Error(friendlyMessage);
       }
-      throw new Error(friendlyMessage);
+
+      const valuesData = await valuesResponse.json();
+      const rows = valuesData.values || [];
+
+      if (rows.length === 0) {
+        throw new Error('Tệp bảng tính trống hoặc không có dòng dữ liệu nào.');
+      }
+
+      const packages = parseSheetData(rows);
+      return { sheetName, packages };
+    } catch (error: any) {
+      console.warn('Google Sheets API failed.', error);
+      apiError = error;
     }
-
-    const valuesData = await valuesResponse.json();
-    const rows = valuesData.values || [];
-
-    if (rows.length === 0) {
-      throw new Error('Tệp bảng tính trống hoặc không có dòng dữ liệu nào.');
-    }
-
-    const packages = parseSheetData(rows);
-    return { sheetName, packages };
-  } catch (error: any) {
-    console.warn('Google Sheets API failed.', error);
-    apiError = error;
   }
 
   // Attempt 3: Direct public CSV fetch (if CORS permits or in local environment)
@@ -458,9 +579,13 @@ export const fetchGoogleSheetData = async (
   } catch (fallbackError: any) {
     console.error('All fetch attempts failed:', fallbackError);
     // Throw original error or a comprehensive error message
-    const mainMsg = apiError ? apiError.message : 'Lỗi kết nối hoặc không tìm thấy bảng tính.';
+    const mainMsg = apiError 
+      ? apiError.message 
+      : lastProxyError 
+        ? lastProxyError.message 
+        : fallbackError.message || 'Lỗi kết nối hoặc không tìm thấy bảng tính.';
     throw new Error(
-      `${mainMsg} (Tải qua Allorigins proxy hoặc liên kết công khai cũng thất bại. Vui lòng đảm bảo file Sheet đã được chia sẻ ở chế độ "Bất kỳ ai có liên kết đều có thể xem").`
+      `${mainMsg} (Vui lòng đảm bảo file Sheet đã được chia sẻ ở chế độ "Bất kỳ ai có liên kết đều có thể xem").`
     );
   }
 };
@@ -471,22 +596,11 @@ export interface GoogleSheetTab {
 }
 
 /**
- * Public scraper to fetch sheet tabs from a public Google Sheet using Allorigins proxy.
+ * Public scraper to fetch sheet tabs from a public Google Sheet using multi-proxy loops.
  */
 export const fetchPublicSheetsScraper = async (spreadsheetId: string): Promise<GoogleSheetTab[]> => {
   try {
-    console.log(`Scraping public tabs list for spreadsheet: ${spreadsheetId}...`);
-    const htmlViewUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/htmlview`;
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(htmlViewUrl)}`;
-    const response = await fetch(proxyUrl);
-    if (!response.ok) {
-      throw new Error(`Proxy error: ${response.status}`);
-    }
-    const json = await response.json();
-    const html = json.contents;
-    if (!html || typeof html !== 'string') {
-      throw new Error('No HTML content returned from proxy');
-    }
+    const html = await fetchPublicHtmlWithProxies(spreadsheetId);
 
     const tabs: GoogleSheetTab[] = [];
     let match;
@@ -502,9 +616,9 @@ export const fetchPublicSheetsScraper = async (spreadsheetId: string): Promise<G
       }
     }
 
-    // Pattern 2: Match JSON blocks containing {"sheetId":xxxxx,"title":"Tab Title"}
+    // Pattern 2: Match JSON blocks containing {"sheetId":xxxxx,"title":"Tab Title"} or sheetId:xxxxx,title:"Tab Title"
     if (tabs.length === 0) {
-      const jsonRegex = /["']sheetId["']:\s*([0-9]+),\s*["']title["']:\s*["']([^"']+)["']/gi;
+      const jsonRegex = /(?:"sheetId"|'sheetId'|sheetId)\s*:\s*([0-9]+)\s*,\s*(?:"title"|'title'|title)\s*:\s*["']([^"']+)["']/gi;
       while ((match = jsonRegex.exec(html)) !== null) {
         const sheetId = match[1];
         const title = match[2];
@@ -519,7 +633,7 @@ export const fetchPublicSheetsScraper = async (spreadsheetId: string): Promise<G
       const linkRegex = /href=["'][^"']*gid=([0-9]+)[^"']*["'][^>]*>([^<]+)<\/a>/gi;
       while ((match = linkRegex.exec(html)) !== null) {
         const sheetId = match[1];
-        const title = match[2].trim();
+        const title = match[2].replace(/<[^>]*>/g, '').trim();
         if (sheetId && title && title.length < 50 && !/^(next|previous|click|here|view|link|edit)$/i.test(title)) {
           if (!tabs.some(t => t.sheetId === sheetId)) {
             tabs.push({ sheetId, title });
@@ -539,13 +653,16 @@ export const fetchPublicSheetsScraper = async (spreadsheetId: string): Promise<G
     }
 
     if (uniqueTabs.length > 0) {
-      console.log(`Successfully scraped ${uniqueTabs.length} tabs via Allorigins proxy!`, uniqueTabs);
+      console.log(`[Scraper] Tìm thấy ${uniqueTabs.length} sheet từ htmlview!`, uniqueTabs);
       return uniqueTabs;
     }
-  } catch (err) {
+  } catch (err: any) {
     console.error('fetchPublicSheetsScraper error:', err);
+    if (err.message && err.message.includes('chế độ riêng tư')) {
+      throw err;
+    }
   }
-  return [];
+  return [{ sheetId: '0', title: 'Bảng tính công khai (Tự động)' }];
 };
 
 /**
@@ -557,13 +674,7 @@ export const fetchSpreadsheetSheets = async (
 ): Promise<GoogleSheetTab[]> => {
   // If we don't have an accessToken, use the public scraper
   if (!accessToken) {
-    const publicTabs = await fetchPublicSheetsScraper(spreadsheetId);
-    if (publicTabs.length > 0) {
-      return publicTabs;
-    }
-    return [
-      { sheetId: '1285066285', title: 'Bảng tính công khai (Tự động)' }
-    ];
+    return await fetchPublicSheetsScraper(spreadsheetId);
   }
 
   try {
@@ -588,7 +699,7 @@ export const fetchSpreadsheetSheets = async (
         if (detail.includes('API has not been used in project') || detail.includes('disabled')) {
           friendlyMessage += `: Google Sheets API chưa được bật trong Google Cloud Console của dự án Firebase.`;
         } else {
-          friendlyMessage += `: Chưa được cấp quyền truy cập. Hãy nhấn "Ngắt kết nối Google" và đăng nhập lại, nhớ tích chọn hộp kiểm cho phép xem bảng tính.`;
+          friendlyMessage += `: Chưa được cấp quyền truy cập. Hãy dán liên kết chia sẻ công khai và chọn sheet.`;
         }
       } else if (metaResponse.status === 404) {
         friendlyMessage += `: Không tìm thấy file Google Sheet. Vui lòng kiểm tra lại ID bảng tính.`;
@@ -606,13 +717,7 @@ export const fetchSpreadsheetSheets = async (
     }));
   } catch (error: any) {
     console.warn('fetchSpreadsheetSheets API failed. Trying public fallback...', error);
-    const publicTabs = await fetchPublicSheetsScraper(spreadsheetId);
-    if (publicTabs.length > 0) {
-      return publicTabs;
-    }
-    return [
-      { sheetId: '1285066285', title: 'Bảng tính công khai (Tự động)' }
-    ];
+    return await fetchPublicSheetsScraper(spreadsheetId);
   }
 };
 
