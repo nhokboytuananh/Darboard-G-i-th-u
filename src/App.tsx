@@ -16,8 +16,6 @@ import {
   User as UserIcon,
   Menu,
 } from 'lucide-react';
-import { User } from 'firebase/auth';
-
 import ExecutiveKpis from './components/ExecutiveKpis';
 import ExecutiveCharts from './components/ExecutiveCharts';
 import PackageListTable from './components/PackageListTable';
@@ -25,20 +23,19 @@ import SyncSettings from './components/SyncSettings';
 
 import { BidPackage, UserRole, ActivityLog, GoogleSheetSyncInfo } from './types';
 import { INITIAL_BID_PACKAGES, INITIAL_ACTIVITY_LOGS } from './sampleData';
-import { initAuth, googleSignIn, logout } from './utils/auth';
 import { fetchGoogleSheetData } from './utils/googleSheets';
 
 export default function App() {
-  // Auth State
-  const [user, setUser] = useState<User | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [needsAuth, setNeedsAuth] = useState(true);
-
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Role is derived dynamically: logged-in user is 'Quản lý dự án' (write permissions), otherwise 'Lãnh đạo' (read-only)
-  const role: UserRole = user ? 'Quản lý dự án' : 'Lãnh đạo';
+  // Constant state values after removing Google login
+  const user = null;
+  const accessToken = null;
+  const isLoggingIn = false;
+  const needsAuth = false;
+
+  // Role is 'Quản lý dự án' (write permissions) so users have full administrative controls
+  const role: UserRole = 'Quản lý dự án';
 
   // Core Data States
   const [packages, setPackages] = useState<BidPackage[]>(INITIAL_BID_PACKAGES);
@@ -126,120 +123,23 @@ export default function App() {
     }
   }, [showNotification]);
 
-  // Auth Initialization on load
+  // Initial public sync on mount
   useEffect(() => {
-    const unsubscribe = initAuth(
-      (currentUser, token) => {
-        setUser(currentUser);
-        setAccessToken(token);
-        setNeedsAuth(false);
-        setIsLoggingIn(false);
-
-        // Auto trigger first sync when auth is detected
-        handleSyncData(
-          syncInfo.spreadsheetId,
-          syncInfo.gid || '1285066285',
-          token,
-          currentUser.email || 'user@gmail.com'
-        );
-      },
-      () => {
-        setUser(null);
-        setAccessToken(null);
-        setNeedsAuth(true);
-        setIsLoggingIn(false);
-
-        // Auto trigger sync for public sheet even when NOT logged in!
-        handleSyncData(
-          syncInfo.spreadsheetId,
-          syncInfo.gid || '1285066285',
-          null,
-          'guest@company.com.vn'
-        );
-      }
+    handleSyncData(
+      syncInfo.spreadsheetId,
+      syncInfo.gid || '1285066285',
+      '',
+      'guest@company.com.vn'
     );
-
-    return () => unsubscribe();
   }, [syncInfo.spreadsheetId, syncInfo.gid, handleSyncData]);
-
-  // Google Sign-In handler
-  const handleSignIn = async () => {
-    setIsLoggingIn(true);
-    try {
-      const result = await googleSignIn();
-      if (result) {
-        setUser(result.user);
-        setAccessToken(result.accessToken);
-        setNeedsAuth(false);
-        showNotification('success', `Chào mừng ${result.user.displayName}! Bạn đã kết nối thành công Google Sheets.`);
-
-        // Trigger sync immediately with loaded token
-        handleSyncData(
-          syncInfo.spreadsheetId,
-          syncInfo.gid || '1285066285',
-          result.accessToken,
-          result.user.email || 'user@gmail.com'
-        );
-      }
-    } catch (err: any) {
-      console.error('Login error:', err);
-      let errorMsg = 'Không thể kết nối Google Account. Vui lòng thử lại.';
-      
-      if (err?.code) {
-        switch (err.code) {
-          case 'auth/unauthorized-domain':
-            errorMsg = 'Lỗi: Tên miền này chưa được cấp phép (Authorized Domains) trong dự án Firebase đang chạy. Vui lòng kiểm tra lại cấu hình.';
-            break;
-          case 'auth/popup-blocked':
-            errorMsg = 'Lỗi: Trình duyệt đã chặn cửa sổ đăng nhập (Popup Blocker). Vui lòng cho phép mở popup và thử lại.';
-            break;
-          case 'auth/popup-closed-by-user':
-            errorMsg = 'Yêu cầu đăng nhập bị hủy do bạn đã đóng cửa sổ trước khi hoàn tất.';
-            break;
-          case 'auth/operation-not-allowed':
-            errorMsg = 'Lỗi: Phương thức đăng nhập Google chưa được kích hoạt trong Firebase Console (Authentication > Sign-in method).';
-            break;
-          default:
-            errorMsg = `Lỗi kết nối (${err.code}): ${err.message || 'Vui lòng thử lại.'}`;
-        }
-      } else if (err?.message) {
-        errorMsg = `Lỗi kết nối: ${err.message}`;
-      }
-      
-      showNotification('error', errorMsg);
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
-
-  // Google Sign-Out handler
-  const handleSignOut = async () => {
-    try {
-      await logout();
-      setUser(null);
-      setAccessToken(null);
-      setNeedsAuth(true);
-      setPackages(INITIAL_BID_PACKAGES); // Fallback back to sample data
-      setSyncInfo(prev => ({
-        ...prev,
-        sheetName: '',
-        lastSyncedAt: null,
-        syncStatus: 'idle',
-        errorMessage: undefined,
-      }));
-      showNotification('info', 'Đã ngắt kết nối Google Sheets. Hệ thống tự động chuyển sang Chế độ dữ liệu mẫu.');
-    } catch (err) {
-      console.error('Logout error:', err);
-    }
-  };
 
   // Manual trigger force sync
   const handleManualSync = () => {
     handleSyncData(
       syncInfo.spreadsheetId,
       syncInfo.gid || '1285066285',
-      accessToken,
-      user?.email || 'guest@company.com.vn'
+      '',
+      'guest@company.com.vn'
     );
   };
 
@@ -286,12 +186,7 @@ export default function App() {
       gid: newGid,
     }));
 
-    // Trigger sync immediately if token is already available
-    if (user && accessToken) {
-      handleSyncData(newSpreadsheetId, newGid, accessToken, user.email || 'user@gmail.com');
-    } else {
-      showNotification('info', `Đã áp dụng cấu hình nguồn mới. Để đồng bộ dữ liệu thực tế, vui lòng đăng nhập Google.`);
-    }
+    handleSyncData(newSpreadsheetId, newGid, '', 'guest@company.com.vn');
   };
 
   // Simulated automatic live background update tracker (satisfies "cập nhật thời gian thực")
@@ -302,14 +197,14 @@ export default function App() {
         handleSyncData(
           syncInfo.spreadsheetId,
           syncInfo.gid || '1285066285',
-          accessToken,
-          user?.email || 'guest@company.com.vn'
+          '',
+          'guest@company.com.vn'
         );
       }, 60000); // 1 minute auto refresh
 
       return () => clearInterval(interval);
     }
-  }, [user, accessToken, syncInfo.spreadsheetId, syncInfo.gid, syncInfo.syncStatus, handleSyncData]);
+  }, [syncInfo.spreadsheetId, syncInfo.gid, syncInfo.syncStatus, handleSyncData]);
 
   return (
     <div className="flex h-screen w-screen bg-slate-50 font-sans text-slate-900 overflow-hidden relative">
@@ -386,49 +281,18 @@ export default function App() {
           </button>
         </nav>
 
-        {/* Bottom User / Login Panel */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/40">
-          {user ? (
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-3">
-                {user.photoURL ? (
-                  <img
-                    src={user.photoURL}
-                    alt={user.displayName || 'Google User'}
-                    className="w-9 h-9 rounded-full border border-slate-700 shadow-xs"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="w-9 h-9 rounded-full bg-slate-800 text-slate-200 border border-slate-700 flex items-center justify-center font-bold text-sm">
-                    {user.displayName?.charAt(0) || 'U'}
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-white truncate">{user.displayName || 'Tài khoản Google'}</p>
-                  <p className="text-[10px] text-slate-500 truncate">{user.email}</p>
-                </div>
-              </div>
-              <button
-                onClick={handleSignOut}
-                className="w-full py-1.5 bg-slate-800 hover:bg-rose-950/30 hover:text-rose-400 text-slate-400 text-[11px] font-bold rounded-lg transition border border-slate-700 hover:border-rose-900/40 flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                Ngắt kết nối Sheets
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              <p className="text-[10px] text-slate-500 text-center font-medium leading-relaxed">
-                Kết nối tài khoản Google để đồng bộ dữ liệu thầu tự động.
-              </p>
-              <button
-                onClick={handleSignIn}
-                disabled={isLoggingIn}
-                className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 active:scale-98 text-white font-bold rounded-lg text-xs transition shadow-xs shadow-indigo-600/10 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                {isLoggingIn ? 'Đang kết nối...' : 'Kết nối Google'}
-              </button>
-            </div>
-          )}
+        {/* Bottom Connection Status Panel */}
+        <div className="p-4 border-t border-slate-800 bg-slate-950/40 text-center">
+          <div className="flex items-center justify-center gap-2 text-emerald-400 mb-1.5">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-[11px] font-bold uppercase tracking-wider font-mono">Đồng bộ trực tiếp</span>
+          </div>
+          <p className="text-[10px] text-slate-500 leading-normal">
+            Hệ thống đang quét dữ liệu thời gian thực từ liên kết Google Sheets công khai.
+          </p>
         </div>
       </aside>
 
@@ -447,10 +311,10 @@ export default function App() {
             <h1 className="text-sm sm:text-md font-bold text-slate-800 tracking-tight font-display truncate">
               Báo Cáo Tiến Độ Gói Thầu
             </h1>
-            {user ? (
+            {syncInfo.syncStatus === 'success' ? (
               <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-[8px] sm:text-[9px] font-bold rounded-md uppercase tracking-wider border border-emerald-200 flex items-center gap-1 shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="hidden xs:inline">Live</span>
+                <span className="hidden xs:inline">Đồng bộ trực tiếp</span>
               </span>
             ) : (
               <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 text-[8px] sm:text-[9px] font-bold rounded-md uppercase tracking-wider border border-blue-200 flex items-center gap-1 shrink-0">
@@ -484,31 +348,9 @@ export default function App() {
 
         {/* Scrollable Viewport */}
         <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6 bg-slate-50">
-          {/* Banner: Demo Mode Warning / Sync Success */}
+          {/* Banner: Sync Success */}
           <AnimatePresence>
-            {!user && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="p-3 bg-blue-50/70 border border-blue-100 text-blue-800 rounded-xl flex items-center justify-between text-xs font-medium"
-              >
-                <div className="flex items-center gap-2">
-                  <Info className="w-4 h-4 text-blue-500 shrink-0" />
-                  <span>
-                    Đang hiển thị <strong>Hồ sơ dữ liệu mẫu</strong> của dự án trọng điểm. Đăng nhập tài khoản Google để nạp dữ liệu thực tế tự động từ liên kết Google Sheets của bạn.
-                  </span>
-                </div>
-                <button
-                  onClick={handleSignIn}
-                  className="text-blue-600 hover:text-blue-800 font-bold hover:underline shrink-0"
-                >
-                  Kết nối ngay →
-                </button>
-              </motion.div>
-            )}
-
-            {user && syncInfo.syncStatus === 'success' && (
+            {syncInfo.syncStatus === 'success' && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -587,7 +429,7 @@ export default function App() {
                 <PackageListTable
                   packages={packages}
                   role={role}
-                  userEmail={user?.email || 'nhokboytuananh@gmail.com'}
+                  userEmail="nhokboytuananh@gmail.com"
                   onUpdatePackage={handleUpdatePackage}
                   onAddPackage={handleAddPackage}
                 />
@@ -600,7 +442,7 @@ export default function App() {
                   activityLogs={activityLogs}
                   onSpreadsheetConfigChange={handleSpreadsheetConfigChange}
                   onForceSync={handleManualSync}
-                  userEmail={user?.email}
+                  userEmail="nhokboytuananh@gmail.com"
                   accessToken={accessToken}
                 />
               )}
@@ -614,7 +456,7 @@ export default function App() {
               <div className="flex justify-center gap-4">
                 <span className="flex items-center gap-1 font-semibold text-slate-500">
                   <Shield className="w-3.5 h-3.5 text-slate-400" />
-                  Xác thực OAuth an toàn
+                  Đồng bộ không mật khẩu (Public)
                 </span>
                 <span className="text-slate-300">|</span>
                 <span className="font-mono font-medium text-slate-500">Version 2.4.0 (Vite React 19)</span>

@@ -67,7 +67,7 @@ export default function SyncSettings({
   };
 
   useEffect(() => {
-    if (!accessToken || !tempSpreadsheetId || tempSpreadsheetId.trim().length < 15) {
+    if (!tempSpreadsheetId || tempSpreadsheetId.trim().length < 15) {
       setTabs([]);
       setTabError(null);
       return;
@@ -226,48 +226,42 @@ export default function SyncSettings({
               )}
             </div>
 
-            {accessToken ? (
-              tabs.length > 0 ? (
-                <div className="space-y-1.5">
-                  <p className="text-[10px] text-slate-500 leading-normal">
-                    Tệp của bạn có <strong className="text-slate-700">{tabs.length} sheet</strong>. Nhấn vào một sheet bên dưới để tự động chọn nhanh mã GID:
-                  </p>
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {tabs.map((t) => {
-                      const isSelected = String(tempGid) === String(t.sheetId);
-                      return (
-                        <button
-                          key={t.sheetId}
-                          type="button"
-                          onClick={() => setTempGid(t.sheetId)}
-                          className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition cursor-pointer flex items-center gap-1.5 ${
-                            isSelected
-                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300'
-                          }`}
-                        >
-                          <FileSpreadsheet className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-white' : 'text-emerald-600'}`} />
-                          <span>{t.title}</span>
-                          <span className={`text-[9px] font-mono ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>
-                            ({t.sheetId})
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+            {tabs.length > 0 ? (
+              <div className="space-y-1.5">
+                <p className="text-[10px] text-slate-500 leading-normal">
+                  Tệp của bạn có <strong className="text-slate-700">{tabs.length} sheet</strong>. Nhấn vào một sheet bên dưới để tự động chọn nhanh mã GID:
+                </p>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {tabs.map((t) => {
+                    const isSelected = String(tempGid) === String(t.sheetId);
+                    return (
+                      <button
+                        key={t.sheetId}
+                        type="button"
+                        onClick={() => setTempGid(t.sheetId)}
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+                          isSelected
+                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300'
+                        }`}
+                      >
+                        <FileSpreadsheet className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-white' : 'text-emerald-600'}`} />
+                        <span>{t.title}</span>
+                        <span className={`text-[9px] font-mono ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>
+                          ({t.sheetId})
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-              ) : (
-                <div className="text-[10px] text-slate-400 italic py-1 leading-relaxed">
-                  {tabError ? (
-                    <span className="text-rose-600 font-medium">{tabError}</span>
-                  ) : (
-                    <span>Nhập đúng mã Spreadsheet ID ở trên để tự động nhận diện danh sách các Sheet.</span>
-                  )}
-                </div>
-              )
+              </div>
             ) : (
-              <div className="text-[10px] text-slate-500 leading-relaxed py-1">
-                💡 <strong className="text-slate-700">Mẹo nâng cao:</strong> Hãy <strong className="text-indigo-600">Đăng nhập tài khoản Google</strong> ở cột bên trái. Hệ thống sẽ tự động hiển thị danh sách tất cả các Sheet hiện có trong tệp của bạn dưới dạng menu trực quan để bạn click chọn trực tiếp, thay vì phải đi sao chép GID thủ công từ URL!
+              <div className="text-[10px] text-slate-400 italic py-1 leading-relaxed">
+                {tabError ? (
+                  <span className="text-rose-600 font-medium">{tabError}</span>
+                ) : (
+                  <span>Nhập đúng mã Spreadsheet ID ở trên để tự động nhận diện danh sách các Sheet.</span>
+                )}
               </div>
             )}
           </div>
@@ -299,7 +293,7 @@ export default function SyncSettings({
               <p className="font-bold">Chi tiết lỗi kết nối:</p>
               <p className="opacity-90 mt-0.5 leading-relaxed">{syncInfo.errorMessage}</p>
               <p className="text-[11px] font-medium text-rose-600 mt-1.5 leading-relaxed">
-                * Lưu ý: Hãy đảm bảo bạn đã (1) Đăng nhập tài khoản Google có quyền truy cập file Sheets này, và (2) Cho phép cấp quyền readonly trong cửa sổ Google Auth. Bạn vẫn có thể trải nghiệm hoàn hảo hệ thống bằng dữ liệu mẫu chuyên nghiệp có sẵn.
+                * Lưu ý: Vui lòng đảm bảo file Sheet đã được chia sẻ ở chế độ công khai ("Bất kỳ ai có liên kết đều có thể xem") để hệ thống có thể kết nối thành công mà không cần mật khẩu hay đăng nhập.
               </p>
             </div>
           </div>

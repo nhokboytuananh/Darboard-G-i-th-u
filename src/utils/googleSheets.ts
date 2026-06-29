@@ -471,17 +471,101 @@ export interface GoogleSheetTab {
 }
 
 /**
+ * Public scraper to fetch sheet tabs from a public Google Sheet using Allorigins proxy.
+ */
+export const fetchPublicSheetsScraper = async (spreadsheetId: string): Promise<GoogleSheetTab[]> => {
+  try {
+    console.log(`Scraping public tabs list for spreadsheet: ${spreadsheetId}...`);
+    const htmlViewUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/htmlview`;
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(htmlViewUrl)}`;
+    const response = await fetch(proxyUrl);
+    if (!response.ok) {
+      throw new Error(`Proxy error: ${response.status}`);
+    }
+    const json = await response.json();
+    const html = json.contents;
+    if (!html || typeof html !== 'string') {
+      throw new Error('No HTML content returned from proxy');
+    }
+
+    const tabs: GoogleSheetTab[] = [];
+    let match;
+
+    // Pattern 1: Match list items <li id="sheet-button-xxxxx"><a>Tab Title</a></li>
+    const liRegex = /<li[^>]+id=["']sheet-button-([0-9]+)["'][^>]*>(.*?)<\/li>/gi;
+    while ((match = liRegex.exec(html)) !== null) {
+      const sheetId = match[1];
+      const innerHtml = match[2];
+      const title = innerHtml.replace(/<[^>]*>/g, '').trim();
+      if (sheetId && title) {
+        tabs.push({ sheetId, title });
+      }
+    }
+
+    // Pattern 2: Match JSON blocks containing {"sheetId":xxxxx,"title":"Tab Title"}
+    if (tabs.length === 0) {
+      const jsonRegex = /["']sheetId["']:\s*([0-9]+),\s*["']title["']:\s*["']([^"']+)["']/gi;
+      while ((match = jsonRegex.exec(html)) !== null) {
+        const sheetId = match[1];
+        const title = match[2];
+        if (sheetId && title && !tabs.some(t => t.sheetId === sheetId)) {
+          tabs.push({ sheetId, title });
+        }
+      }
+    }
+
+    // Pattern 3: Match general links with gid=xxxxx
+    if (tabs.length === 0) {
+      const linkRegex = /href=["'][^"']*gid=([0-9]+)[^"']*["'][^>]*>([^<]+)<\/a>/gi;
+      while ((match = linkRegex.exec(html)) !== null) {
+        const sheetId = match[1];
+        const title = match[2].trim();
+        if (sheetId && title && title.length < 50 && !/^(next|previous|click|here|view|link|edit)$/i.test(title)) {
+          if (!tabs.some(t => t.sheetId === sheetId)) {
+            tabs.push({ sheetId, title });
+          }
+        }
+      }
+    }
+
+    // Filter unique sheetIds
+    const uniqueTabs: GoogleSheetTab[] = [];
+    const seenIds = new Set<string>();
+    for (const tab of tabs) {
+      if (!seenIds.has(tab.sheetId)) {
+        seenIds.add(tab.sheetId);
+        uniqueTabs.push(tab);
+      }
+    }
+
+    if (uniqueTabs.length > 0) {
+      console.log(`Successfully scraped ${uniqueTabs.length} tabs via Allorigins proxy!`, uniqueTabs);
+      return uniqueTabs;
+    }
+  } catch (err) {
+    console.error('fetchPublicSheetsScraper error:', err);
+  }
+  return [];
+};
+
+/**
  * Fetches the list of sheets/tabs inside a Spreadsheet
  */
 export const fetchSpreadsheetSheets = async (
   spreadsheetId: string,
   accessToken: string | null
 ): Promise<GoogleSheetTab[]> => {
+  // If we don't have an accessToken, use the public scraper
   if (!accessToken) {
+    const publicTabs = await fetchPublicSheetsScraper(spreadsheetId);
+    if (publicTabs.length > 0) {
+      return publicTabs;
+    }
     return [
       { sheetId: '1285066285', title: 'Bảng tính công khai (Tự động)' }
     ];
   }
+
   try {
     const metaResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets(properties(sheetId,title))`,
@@ -522,13 +606,13 @@ export const fetchSpreadsheetSheets = async (
     }));
   } catch (error: any) {
     console.warn('fetchSpreadsheetSheets API failed. Trying public fallback...', error);
-    try {
-      return [
-        { sheetId: '1285066285', title: 'Bảng tính công khai (Tự động)' }
-      ];
-    } catch (e) {
-      throw error;
+    const publicTabs = await fetchPublicSheetsScraper(spreadsheetId);
+    if (publicTabs.length > 0) {
+      return publicTabs;
     }
+    return [
+      { sheetId: '1285066285', title: 'Bảng tính công khai (Tự động)' }
+    ];
   }
 };
 
