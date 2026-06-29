@@ -327,9 +327,35 @@ export const fetchGoogleSheetData = async (
   gid: string,
   accessToken: string
 ): Promise<{ sheetName: string; packages: BidPackage[] }> => {
-  let originalError: Error | null = null;
+  const publicUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
   
+  // Attempt 1: Fetch via Allorigins CORS Proxy (lightning fast, bypasses Google Cloud Console disabled API & verification issues)
   try {
+    console.log('Attempting to fetch Google Sheet data via Allorigins CORS proxy...');
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(publicUrl)}`;
+    const response = await fetch(proxyUrl);
+    if (response.ok) {
+      const json = await response.json();
+      if (json && typeof json.contents === 'string' && json.contents.trim()) {
+        const rows = parseCSV(json.contents);
+        if (rows.length > 0) {
+          const packages = parseSheetData(rows);
+          console.log('Successfully fetched and parsed data via Allorigins proxy!');
+          return {
+            sheetName: 'Bảng tính (Đồng bộ qua Allorigins)',
+            packages
+          };
+        }
+      }
+    }
+  } catch (proxyError) {
+    console.warn('Allorigins proxy fetch failed, falling back to other methods...', proxyError);
+  }
+
+  // Attempt 2: Fallback to standard authenticated Google Sheets API (if accessToken is valid and API is enabled)
+  let apiError: Error | null = null;
+  try {
+    console.log('Attempting to fetch via standard authenticated Google Sheets API...');
     // 1. Fetch spreadsheet metadata to map GID to Sheet Name
     const metaResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets(properties(sheetId,title))`,
@@ -407,36 +433,35 @@ export const fetchGoogleSheetData = async (
     const packages = parseSheetData(rows);
     return { sheetName, packages };
   } catch (error: any) {
-    console.warn('Google Sheets API failed. Trying public CSV fetch fallback...', error);
-    originalError = error;
-    
-    try {
-      // Fallback: Fetch public CSV export directly
-      // Google Sheets allows downloading public sheets via CSV without access tokens and has CORS enabled
-      const publicUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
-      const response = await fetch(publicUrl);
-      if (!response.ok) {
-        throw new Error(`Public CSV fetch failed with status ${response.status}`);
-      }
-      const csvText = await response.text();
-      const rows = parseCSV(csvText);
-      if (rows.length === 0) {
-        throw new Error('Không thể phân tích dữ liệu CSV từ bảng tính công khai.');
-      }
-      
-      const packages = parseSheetData(rows);
-      return { 
-        sheetName: 'Bảng tính (Kết nối công khai)', 
-        packages 
-      };
-    } catch (fallbackError: any) {
-      console.error('Fallback failed:', fallbackError);
-      // Throw original error with friendly message, but append instructions
-      const message = originalError ? originalError.message : 'Lỗi không xác định khi kết nối Google Sheets.';
-      throw new Error(
-        `${message} (Tải qua liên kết công khai cũng thất bại, vui lòng đảm bảo file Sheet đã được chia sẻ ở chế độ "Bất kỳ ai có liên kết đều có thể xem" nếu muốn dùng chế độ này).`
-      );
+    console.warn('Google Sheets API failed.', error);
+    apiError = error;
+  }
+
+  // Attempt 3: Direct public CSV fetch (if CORS permits or in local environment)
+  try {
+    console.log('Attempting direct public CSV fetch...');
+    const response = await fetch(publicUrl);
+    if (!response.ok) {
+      throw new Error(`Direct CSV fetch failed with status ${response.status}`);
     }
+    const csvText = await response.text();
+    const rows = parseCSV(csvText);
+    if (rows.length === 0) {
+      throw new Error('Không thể phân tích dữ liệu CSV từ bảng tính công khai.');
+    }
+    
+    const packages = parseSheetData(rows);
+    return { 
+      sheetName: 'Bảng tính (Kết nối công khai trực tiếp)', 
+      packages 
+    };
+  } catch (fallbackError: any) {
+    console.error('All fetch attempts failed:', fallbackError);
+    // Throw original error or a comprehensive error message
+    const mainMsg = apiError ? apiError.message : 'Lỗi kết nối hoặc không tìm thấy bảng tính.';
+    throw new Error(
+      `${mainMsg} (Tải qua Allorigins proxy hoặc liên kết công khai cũng thất bại. Vui lòng đảm bảo file Sheet đã được chia sẻ ở chế độ "Bất kỳ ai có liên kết đều có thể xem").`
+    );
   }
 };
 
