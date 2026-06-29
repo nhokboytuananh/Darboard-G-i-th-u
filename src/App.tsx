@@ -174,7 +174,30 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Login error:', err);
-      showNotification('error', 'Không thể kết nối Google Account. Vui lòng thử lại.');
+      let errorMsg = 'Không thể kết nối Google Account. Vui lòng thử lại.';
+      
+      if (err?.code) {
+        switch (err.code) {
+          case 'auth/unauthorized-domain':
+            errorMsg = 'Lỗi: Tên miền này chưa được cấp phép (Authorized Domains) trong dự án Firebase đang chạy. Vui lòng kiểm tra lại cấu hình.';
+            break;
+          case 'auth/popup-blocked':
+            errorMsg = 'Lỗi: Trình duyệt đã chặn cửa sổ đăng nhập (Popup Blocker). Vui lòng cho phép mở popup và thử lại.';
+            break;
+          case 'auth/popup-closed-by-user':
+            errorMsg = 'Yêu cầu đăng nhập bị hủy do bạn đã đóng cửa sổ trước khi hoàn tất.';
+            break;
+          case 'auth/operation-not-allowed':
+            errorMsg = 'Lỗi: Phương thức đăng nhập Google chưa được kích hoạt trong Firebase Console (Authentication > Sign-in method).';
+            break;
+          default:
+            errorMsg = `Lỗi kết nối (${err.code}): ${err.message || 'Vui lòng thử lại.'}`;
+        }
+      } else if (err?.message) {
+        errorMsg = `Lỗi kết nối: ${err.message}`;
+      }
+      
+      showNotification('error', errorMsg);
     } finally {
       setIsLoggingIn(false);
     }
