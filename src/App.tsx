@@ -119,7 +119,7 @@ export default function App() {
         details: `Đồng bộ thất bại: ${error.message || 'Lỗi kết nối API'}`,
       };
       setActivityLogs(prev => [newLog, ...prev]);
-      showNotification('error', `Đồng bộ thất bại. Vui lòng kiểm tra cấu hình hoặc quyền truy cập tài khoản.`);
+      showNotification('error', `Đồng bộ thất bại: ${error.message || 'Vui lòng kiểm tra cấu hình hoặc quyền truy cập tài khoản.'}`);
     } finally {
       setIsSyncing(false);
     }
