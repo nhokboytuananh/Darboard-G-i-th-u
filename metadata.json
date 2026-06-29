@@ -1,0 +1,8 @@
+{
+  "name": "Bid Progress Dashboard",
+  "description": "Báo cáo trực quan tiến độ các gói thầu, tích hợp dữ liệu thời gian thực từ Google Sheets với phân quyền truy cập an toàn.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
