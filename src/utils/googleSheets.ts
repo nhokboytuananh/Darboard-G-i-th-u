@@ -163,10 +163,19 @@ export const parseSheetData = (rows: string[][]): BidPackage[] => {
     const id = getValue(colIndexMap.id) || `GT-${String(index + 1).padStart(2, '0')}`;
     const name = getValue(colIndexMap.name);
     
-    // Check if contractor is filled to set Completed/Unfinished status
+    // Check if contractor, approval date or contract date is filled to set Completed status
     const contractorVal = getValue(colIndexMap.contractor);
     const hasContractor = contractorVal !== '';
-    let status: PackageStatus = hasContractor ? 'Hoàn thành' : 'Đang thực hiện';
+    
+    const approvalDate = getValue(colIndexMap.approvalDate) || undefined;
+    const contractDate = getValue(colIndexMap.contractDate) || undefined;
+    const actualStatus = getValue(colIndexMap.actualStatus) || undefined;
+
+    const hasApprovalDate = approvalDate !== undefined && approvalDate !== '';
+    const hasContractDate = contractDate !== undefined && contractDate !== '';
+    const isCompleted = hasContractor || hasApprovalDate || hasContractDate;
+
+    let status: PackageStatus = isCompleted ? 'Hoàn thành' : 'Đang thực hiện';
 
     const rawType = getValue(colIndexMap.type).trim().toUpperCase();
     let type: PackageType = 'Xây lắp';
@@ -207,7 +216,7 @@ export const parseSheetData = (rows: string[][]): BidPackage[] => {
     const budget = parseNum(getValue(colIndexMap.budget)) || 0;
     const contractValue = parseNum(getValue(colIndexMap.contractValue)) || undefined;
     const contractor = contractorVal || undefined;
-    const progress = parsePercent(getValue(colIndexMap.progress)) || (hasContractor ? 100 : 0);
+    const progress = parsePercent(getValue(colIndexMap.progress)) || (isCompleted ? 100 : 0);
     const startDate = getValue(colIndexMap.startDate) || new Date().toISOString().split('T')[0];
     const endDate = getValue(colIndexMap.endDate) || new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString().split('T')[0];
     const manager = getValue(colIndexMap.manager) || 'Chưa phân công';
@@ -215,10 +224,6 @@ export const parseSheetData = (rows: string[][]): BidPackage[] => {
     const disbursement = parseNum(getValue(colIndexMap.disbursement)) || 0;
     const notes = getValue(colIndexMap.notes) || undefined;
     
-    const approvalDate = getValue(colIndexMap.approvalDate) || undefined;
-    const contractDate = getValue(colIndexMap.contractDate) || undefined;
-    const actualStatus = getValue(colIndexMap.actualStatus) || undefined;
-
     const lcntDurationVal = getValue(colIndexMap.lcntDuration).trim();
     let lcntDuration: number | undefined = undefined;
 
