@@ -33,13 +33,38 @@ export default function SyncSettings({
   accessToken,
 }: SyncSettingsProps) {
   const [tempSpreadsheetId, setTempSpreadsheetId] = useState(syncInfo.spreadsheetId);
-  const [tempGid, setTempGid] = useState(syncInfo.gid || '1936758657');
+  const [tempGid, setTempGid] = useState(syncInfo.gid || '1285066285');
   const [isCopied, setIsCopied] = useState(false);
 
   // States for dynamic sheets/tabs listing
   const [tabs, setTabs] = useState<GoogleSheetTab[]>([]);
   const [isLoadingTabs, setIsLoadingTabs] = useState(false);
   const [tabError, setTabError] = useState<string | null>(null);
+
+  const parseGoogleSheetsUrl = (url: string) => {
+    const dMatch = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    const spreadsheetId = dMatch ? dMatch[1] : '';
+
+    const gidMatch = url.match(/gid=([0-9]+)/);
+    const gid = gidMatch ? gidMatch[1] : '';
+
+    return { spreadsheetId, gid };
+  };
+
+  const handleSpreadsheetIdChange = (val: string) => {
+    const trimmed = val.trim();
+    if (trimmed.includes('docs.google.com/spreadsheets')) {
+      const { spreadsheetId, gid } = parseGoogleSheetsUrl(trimmed);
+      if (spreadsheetId) {
+        setTempSpreadsheetId(spreadsheetId);
+      }
+      if (gid) {
+        setTempGid(gid);
+      }
+    } else {
+      setTempSpreadsheetId(trimmed);
+    }
+  };
 
   useEffect(() => {
     if (!accessToken || !tempSpreadsheetId || tempSpreadsheetId.trim().length < 15) {
@@ -90,7 +115,7 @@ export default function SyncSettings({
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(
-      `https://docs.google.com/spreadsheets/d/${syncInfo.spreadsheetId}/edit#gid=${syncInfo.sheetName || '1936758657'}`
+      `https://docs.google.com/spreadsheets/d/${syncInfo.spreadsheetId}/edit#gid=${syncInfo.gid || '1285066285'}`
     );
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
@@ -164,12 +189,12 @@ export default function SyncSettings({
         <form onSubmit={handleApplyConfig} className="space-y-4 pt-1 text-xs">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2">
-              <label className="font-bold text-slate-700 block mb-1">Spreadsheet ID</label>
+              <label className="font-bold text-slate-700 block mb-1">Spreadsheet ID hoặc Link liên kết</label>
               <input
                 type="text"
-                placeholder="Nhập mã ID của Google Sheet"
+                placeholder="Dán toàn bộ link Google Sheet hoặc ID vào đây..."
                 value={tempSpreadsheetId}
-                onChange={(e) => setTempSpreadsheetId(e.target.value)}
+                onChange={(e) => handleSpreadsheetIdChange(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-slate-50 font-mono text-slate-800"
               />
             </div>
@@ -177,7 +202,7 @@ export default function SyncSettings({
               <label className="font-bold text-slate-700 block mb-1">Sheet GID (Tab ID)</label>
               <input
                 type="text"
-                placeholder="VD: 1936758657"
+                placeholder="VD: 1285066285"
                 value={tempGid}
                 onChange={(e) => setTempGid(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-slate-50 font-mono text-slate-800"

@@ -47,6 +47,7 @@ export default function App() {
   // Sync State
   const [syncInfo, setSyncInfo] = useState<GoogleSheetSyncInfo>({
     spreadsheetId: '1lrq4Brn1O3OdQzUeO7OrNoQEynBuGSt6RteNKqpQTCs', // User's custom sheet
+    gid: '1285066285',
     sheetName: '',
     lastSyncedAt: null,
     syncStatus: 'idle',
@@ -137,7 +138,7 @@ export default function App() {
         // Auto trigger first sync when auth is detected
         handleSyncData(
           syncInfo.spreadsheetId,
-          syncInfo.gid || '1936758657',
+          syncInfo.gid || '1285066285',
           token,
           currentUser.email || 'user@gmail.com'
         );
@@ -147,6 +148,14 @@ export default function App() {
         setAccessToken(null);
         setNeedsAuth(true);
         setIsLoggingIn(false);
+
+        // Auto trigger sync for public sheet even when NOT logged in!
+        handleSyncData(
+          syncInfo.spreadsheetId,
+          syncInfo.gid || '1285066285',
+          null,
+          'guest@company.com.vn'
+        );
       }
     );
 
@@ -167,7 +176,7 @@ export default function App() {
         // Trigger sync immediately with loaded token
         handleSyncData(
           syncInfo.spreadsheetId,
-          syncInfo.gid || '1936758657',
+          syncInfo.gid || '1285066285',
           result.accessToken,
           result.user.email || 'user@gmail.com'
         );
@@ -226,16 +235,11 @@ export default function App() {
 
   // Manual trigger force sync
   const handleManualSync = () => {
-    if (!user || !accessToken) {
-      showNotification('info', 'Vui lòng kết nối tài khoản Google có quyền truy cập Sheets trước để đồng bộ.');
-      handleSignIn();
-      return;
-    }
     handleSyncData(
       syncInfo.spreadsheetId,
-      syncInfo.gid || '1936758657',
+      syncInfo.gid || '1285066285',
       accessToken,
-      user.email || 'user@gmail.com'
+      user?.email || 'guest@company.com.vn'
     );
   };
 
@@ -292,14 +296,14 @@ export default function App() {
 
   // Simulated automatic live background update tracker (satisfies "cập nhật thời gian thực")
   useEffect(() => {
-    // If connected, sync from sheets every 60 seconds automatically
-    if (user && accessToken && syncInfo.syncStatus === 'success') {
+    // If successfully synced once, keep syncing from sheets every 60 seconds automatically
+    if (syncInfo.spreadsheetId && syncInfo.syncStatus === 'success') {
       const interval = setInterval(() => {
         handleSyncData(
           syncInfo.spreadsheetId,
-          syncInfo.gid || '1936758657',
+          syncInfo.gid || '1285066285',
           accessToken,
-          user.email || 'system.scheduler@company.com'
+          user?.email || 'guest@company.com.vn'
         );
       }, 60000); // 1 minute auto refresh
 

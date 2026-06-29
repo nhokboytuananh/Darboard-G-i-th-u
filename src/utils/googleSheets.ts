@@ -475,8 +475,13 @@ export interface GoogleSheetTab {
  */
 export const fetchSpreadsheetSheets = async (
   spreadsheetId: string,
-  accessToken: string
+  accessToken: string | null
 ): Promise<GoogleSheetTab[]> => {
+  if (!accessToken) {
+    return [
+      { sheetId: '1285066285', title: 'Bảng tính công khai (Tự động)' }
+    ];
+  }
   try {
     const metaResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets(properties(sheetId,title))`,
@@ -518,11 +523,8 @@ export const fetchSpreadsheetSheets = async (
   } catch (error: any) {
     console.warn('fetchSpreadsheetSheets API failed. Trying public fallback...', error);
     try {
-      // For public fallback, we can try to find sheet names by downloading the CSV of the default gid,
-      // but since we only need the current sheet GID tab to work, we can return a default mapping if sheets fetch fails.
-      // Or we can just let it fail gracefully or return a dummy list with default mapping.
       return [
-        { sheetId: '1936758657', title: 'Bảng tính công khai (Tự động)' }
+        { sheetId: '1285066285', title: 'Bảng tính công khai (Tự động)' }
       ];
     } catch (e) {
       throw error;
