@@ -329,11 +329,6 @@ const PROXIES = [
     parse: (text: string) => text
   },
   {
-    name: 'codetabs.com',
-    getUrl: (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-    parse: (text: string) => text
-  },
-  {
     name: 'allorigins.win',
     getUrl: (url: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
     parse: (text: string) => {
@@ -344,68 +339,126 @@ const PROXIES = [
         return text;
       }
     }
+  },
+  {
+    name: 'codetabs.com',
+    getUrl: (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+    parse: (text: string) => text
+  },
+  {
+    name: 'allorigins (raw)',
+    getUrl: (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    parse: (text: string) => text
   }
 ];
 
 /**
- * Sequential proxy fetch helper for HTML pages (htmlview/pubhtml)
+ * Parallel proxy fetch helper for HTML pages (htmlview/pubhtml)
  */
 const fetchPublicHtmlWithProxies = async (spreadsheetId: string): Promise<string> => {
   const htmlViewUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/htmlview`;
   const pubHtmlUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/pubhtml`;
   const urlsToTry = [htmlViewUrl, pubHtmlUrl];
   
-  let lastError: Error = new Error('Tất cả các dịch vụ proxy đều không thể kết nối tới Google Sheets.');
-
+  const tasks: { targetUrl: string; proxy: typeof PROXIES[0] }[] = [];
   for (const targetUrl of urlsToTry) {
     for (const proxy of PROXIES) {
-      try {
-        console.log(`[Scraper] Đang thử tải danh sách Sheet từ ${targetUrl} qua ${proxy.name}...`);
-        const proxyUrl = proxy.getUrl(targetUrl);
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 7000);
-        
-        const response = await fetch(proxyUrl, { signal: controller.signal });
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          const rawText = await response.text();
-          const parsedHtml = proxy.parse(rawText);
-          
-          if (parsedHtml && parsedHtml.trim()) {
-            if (
-              parsedHtml.includes('ServiceLogin') || 
-              parsedHtml.includes('accounts.google.com') || 
-              parsedHtml.includes('Sign in - Google Accounts') ||
-              parsedHtml.includes('DocSignIn')
-            ) {
-              throw new Error(
-                'Bảng tính này đang ở chế độ riêng tư (Private). Vui lòng mở Google Sheets, nhấn nút "Chia sẻ" (Share) ở góc trên bên phải, chuyển quyền truy cập thành "Bất kỳ ai có liên kết đều có thể xem" (Anyone with link can view) rồi thử lại.'
-              );
-            }
-            
-            if (
-              parsedHtml.includes('sheet-button-') || 
-              parsedHtml.includes('sheetId') || 
-              parsedHtml.includes('gid=') ||
-              parsedHtml.includes('class="grid-container"')
-            ) {
-              return parsedHtml;
-            }
-          }
-        }
-      } catch (err: any) {
-        console.warn(`[Scraper] Proxy ${proxy.name} thất bại khi tải ${targetUrl}:`, err);
-        if (err.message && err.message.includes('bản tính này đang ở chế độ riêng tư')) {
-          throw err;
-        }
-        lastError = err;
-      }
+      tasks.push({ targetUrl, proxy });
     }
   }
 
-  throw lastError;
+  return new Promise<string>((resolve, reject) => {
+    let completedCount = 0;
+    const errors: Error[] = [];
+    let resolved = false;
+    let isPrivate = false;
+    const controllers: AbortController[] = [];
+
+    tasks.forEach(({ targetUrl, proxy }) => {
+      const controller = new AbortController();
+      controllers.push(controller);
+
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+      }, 5000); // 5 seconds timeout per proxy request (highly responsive parallel races)
+
+      const proxyUrl = proxy.getUrl(targetUrl);
+
+      fetch(proxyUrl, { signal: controller.signal })
+        .then(async (response) => {
+          clearTimeout(timeoutId);
+          if (resolved) return;
+
+          if (response.ok) {
+            const rawText = await response.text();
+            const parsedHtml = proxy.parse(rawText);
+
+            if (parsedHtml && parsedHtml.trim()) {
+              if (
+                parsedHtml.includes('ServiceLogin') || 
+                parsedHtml.includes('accounts.google.com') || 
+                parsedHtml.includes('Sign in - Google Accounts') ||
+                parsedHtml.includes('DocSignIn')
+              ) {
+                isPrivate = true;
+                throw new Error(
+                  'Bảng tính này đang ở chế độ riêng tư (Private). Vui lòng mở Google Sheets, nhấn nút "Chia sẻ" (Share) ở góc trên bên phải, chuyển quyền truy cập thành "Bất kỳ ai có liên kết đều có thể xem" (Anyone with link can view) rồi thử lại.'
+                );
+              }
+              
+              const lowerHtml = parsedHtml.toLowerCase();
+              const isGoogleSheet = 
+                lowerHtml.includes('class="ritz"') || 
+                lowerHtml.includes("class='ritz'") ||
+                lowerHtml.includes('sheet-button') || 
+                lowerHtml.includes('sheets-viewport') || 
+                lowerHtml.includes('grid-container') || 
+                lowerHtml.includes('id="sheet-menu"') ||
+                lowerHtml.includes("id='sheet-menu'") ||
+                lowerHtml.includes('id="sheets-viewport"') ||
+                lowerHtml.includes('sheetid') ||
+                (lowerHtml.includes('gid=') && (lowerHtml.includes('<table') || lowerHtml.includes('class="grid-container"')));
+
+              if (isGoogleSheet) {
+                resolved = true;
+                // Cancel all other pending fetch requests
+                controllers.forEach(c => {
+                  try { c.abort(); } catch (e) {}
+                });
+                resolve(parsedHtml);
+                return;
+              }
+            }
+          }
+          throw new Error(`Proxy ${proxy.name} không trả về HTML hợp lệ cho ${targetUrl}`);
+        })
+        .catch((err) => {
+          clearTimeout(timeoutId);
+          if (resolved) return;
+
+          if (err.message && err.message.includes('chế độ riêng tư')) {
+            isPrivate = true;
+            resolved = true;
+            controllers.forEach(c => {
+              try { c.abort(); } catch (e) {}
+            });
+            reject(err);
+            return;
+          }
+
+          errors.push(err);
+          completedCount++;
+
+          if (completedCount === tasks.length) {
+            if (isPrivate) {
+              reject(new Error('Bảng tính này đang ở chế độ riêng tư (Private). Vui lòng mở Google Sheets và cấu hình chia sẻ "Bất kỳ ai có liên kết đều có thể xem".'));
+            } else {
+              reject(new Error('Tất cả các dịch vụ proxy đều không thể tải danh sách trang tính.'));
+            }
+          }
+        });
+    });
+  });
 };
 
 /**
@@ -418,56 +471,55 @@ export const fetchGoogleSheetData = async (
 ): Promise<{ sheetName: string; packages: BidPackage[] }> => {
   const publicUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
   
-  // Attempt 1: Fetch via Public CORS proxies (sequential fallback)
-  let lastProxyError: Error | null = null;
-  for (const proxy of PROXIES) {
+  // Attempt 1: Direct public CSV fetch (Fastest, cleanest, uses native Google CORS)
+  const urlsToTryDirectly = [
+    { url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/pub?output=csv&gid=${gid}`, name: 'Published Web CSV' },
+    { url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`, name: 'Export CSV' }
+  ];
+
+  for (const item of urlsToTryDirectly) {
     try {
-      console.log(`[CSV Sync] Đang thử tải dữ liệu CSV của GID ${gid} qua ${proxy.name}...`);
-      const proxyUrl = proxy.getUrl(publicUrl);
-      
+      console.log(`[CSV Sync] Đang thử kết nối trực tiếp tải dữ liệu CSV từ ${item.name}...`);
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const response = await fetch(proxyUrl, { signal: controller.signal });
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // Increased timeout to 15 seconds
+      const response = await fetch(item.url, { signal: controller.signal });
       clearTimeout(timeoutId);
 
       if (response.ok) {
-        const rawText = await response.text();
-        const csvContent = proxy.parse(rawText);
+        const csvText = await response.text();
+        
+        // Check if we got redirected to a login page (private sheet)
+        if (
+          csvText.includes('ServiceLogin') || 
+          csvText.includes('accounts.google.com') || 
+          csvText.includes('Sign in - Google Accounts') ||
+          csvText.includes('DocSignIn')
+        ) {
+          throw new Error(
+            'Bảng tính đang ở chế độ riêng tư (Private). Vui lòng mở Google Sheets, nhấn nút "Chia sẻ" (Share), chuyển quyền truy cập thành "Bất kỳ ai có liên kết đều có thể xem" (Anyone with link can view) rồi thử lại.'
+          );
+        }
 
-        if (csvContent && csvContent.trim()) {
-          if (
-            csvContent.includes('ServiceLogin') || 
-            csvContent.includes('accounts.google.com') || 
-            csvContent.includes('Sign in - Google Accounts') ||
-            csvContent.includes('DocSignIn')
-          ) {
+        const rows = parseCSV(csvText);
+        if (rows.length > 0) {
+          const packages = parseSheetData(rows);
+          if (packages.length === 0) {
             throw new Error(
-              'Bảng tính đang ở chế độ riêng tư. Vui lòng mở Google Sheets và cấu hình chia sẻ: "Bất kỳ ai có liên kết đều có thể xem".'
+              'Không tìm thấy cột tiêu đề thầu hợp lệ (Cần có ít nhất cột: "Mã gói thầu", "Tên gói thầu", "Trạng thái", "Tiến độ"). Vui lòng kiểm tra lại dòng tiêu đề đầu tiên.'
             );
           }
-
-          const rows = parseCSV(csvContent);
-          if (rows.length > 0) {
-            const packages = parseSheetData(rows);
-            if (packages.length === 0) {
-              throw new Error(
-                'Không tìm thấy cột tiêu đề thầu hợp lệ (Cần có ít nhất cột: "Mã gói thầu", "Tên gói thầu", "Trạng thái", "Tiến độ"). Vui lòng kiểm tra lại dòng tiêu đề đầu tiên.'
-              );
-            }
-            console.log(`[CSV Sync] Tải thành công ${packages.length} gói thầu từ Google Sheets qua ${proxy.name}!`);
-            return {
-              sheetName: `Trang tính (Đồng bộ qua ${proxy.name})`,
-              packages
-            };
-          }
+          console.log(`[CSV Sync] Tải trực tiếp thành công ${packages.length} gói thầu từ Google Sheets (${item.name})!`);
+          return { 
+            sheetName: 'Bảng tính (Kết nối công khai trực tiếp)', 
+            packages 
+          };
         }
       }
-    } catch (err: any) {
-      console.warn(`[CSV Sync] Proxy ${proxy.name} thất bại:`, err);
-      if (err.message && (err.message.includes('riêng tư') || err.message.includes('tiêu đề thầu'))) {
-        throw err;
+    } catch (directError: any) {
+      console.warn(`[CSV Sync] Thử tải trực tiếp từ ${item.name} thất bại:`, directError.message || directError);
+      if (directError.message && directError.message.includes('riêng tư')) {
+        throw directError;
       }
-      lastProxyError = err;
     }
   }
 
@@ -558,36 +610,119 @@ export const fetchGoogleSheetData = async (
     }
   }
 
-  // Attempt 3: Direct public CSV fetch (if CORS permits or in local environment)
+  let lastProxyError: Error | null = null;
+
+  // Attempt 3: Fetch via Public CORS proxies in parallel
+  console.log('[CSV Sync] Đang thử kết nối tải CSV song song qua các Proxy...');
   try {
-    console.log('Attempting direct public CSV fetch...');
-    const response = await fetch(publicUrl);
-    if (!response.ok) {
-      throw new Error(`Direct CSV fetch failed with status ${response.status}`);
+    const csvContent = await new Promise<string>((resolve, reject) => {
+      let completedCount = 0;
+      let resolved = false;
+      let isPrivate = false;
+      const controllers: AbortController[] = [];
+
+      PROXIES.forEach((proxy) => {
+        const controller = new AbortController();
+        controllers.push(controller);
+
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+        }, 7000); // 7 seconds timeout per proxy
+
+        const proxyUrl = proxy.getUrl(publicUrl);
+
+        fetch(proxyUrl, { signal: controller.signal })
+          .then(async (response) => {
+            clearTimeout(timeoutId);
+            if (resolved) return;
+
+            if (response.ok) {
+              const rawText = await response.text();
+              const parsedCsv = proxy.parse(rawText);
+
+              if (parsedCsv && parsedCsv.trim()) {
+                if (
+                  parsedCsv.includes('ServiceLogin') || 
+                  parsedCsv.includes('accounts.google.com') || 
+                  parsedCsv.includes('Sign in - Google Accounts') ||
+                  parsedCsv.includes('DocSignIn')
+                ) {
+                  isPrivate = true;
+                  throw new Error(
+                    'Bảng tính đang ở chế độ riêng tư (Private). Vui lòng mở Google Sheets, nhấn nút "Chia sẻ" (Share), chuyển quyền truy cập thành "Bất kỳ ai có liên kết đều có thể xem" (Anyone with link can view) rồi thử lại.'
+                  );
+                }
+
+                if (parsedCsv.includes(',') || parsedCsv.includes('\t') || parsedCsv.includes(';') || parsedCsv.includes('\n')) {
+                  resolved = true;
+                  controllers.forEach(c => {
+                    try { c.abort(); } catch (e) {}
+                  });
+                  resolve(parsedCsv);
+                  return;
+                }
+              }
+            }
+            throw new Error(`Proxy ${proxy.name} returned invalid content`);
+          })
+          .catch((err) => {
+            clearTimeout(timeoutId);
+            if (resolved) return;
+
+            if (err.message && err.message.includes('chế độ riêng tư')) {
+              isPrivate = true;
+              resolved = true;
+              controllers.forEach(c => {
+                try { c.abort(); } catch (e) {}
+              });
+              reject(err);
+              return;
+            }
+
+            completedCount++;
+
+            if (completedCount === PROXIES.length) {
+              if (isPrivate) {
+                reject(new Error('Bảng tính này đang ở chế độ riêng tư (Private). Vui lòng mở Google Sheets và cấu hình chia sẻ "Bất kỳ ai có liên kết đều có thể xem".'));
+              } else {
+                reject(new Error('Tất cả các dịch vụ proxy đồng bộ dữ liệu đều thất bại hoặc hết thời gian (Timeout).'));
+              }
+            }
+          });
+      });
+    });
+
+    const rows = parseCSV(csvContent);
+    if (rows.length > 0) {
+      const packages = parseSheetData(rows);
+      if (packages.length === 0) {
+        throw new Error(
+          'Không tìm thấy cột tiêu đề thầu hợp lệ (Cần có ít nhất cột: "Mã gói thầu", "Tên gói thầu", "Trạng thái", "Tiến độ"). Vui lòng kiểm tra lại dòng tiêu đề đầu tiên.'
+        );
+      }
+      console.log(`[CSV Sync] Đồng bộ qua Proxy thành công với ${packages.length} gói thầu!`);
+      return { 
+        sheetName: 'Bảng tính (Đồng bộ qua Proxy)', 
+        packages 
+      };
     }
-    const csvText = await response.text();
-    const rows = parseCSV(csvText);
-    if (rows.length === 0) {
-      throw new Error('Không thể phân tích dữ liệu CSV từ bảng tính công khai.');
+  } catch (proxyError: any) {
+    console.warn('[CSV Sync] Tất cả phương thức đồng bộ CSV qua proxy đều thất bại:', proxyError.message || proxyError);
+    if (proxyError.message && (proxyError.message.includes('riêng tư') || proxyError.message.includes('tiêu đề thầu'))) {
+      throw proxyError;
     }
-    
-    const packages = parseSheetData(rows);
-    return { 
-      sheetName: 'Bảng tính (Kết nối công khai trực tiếp)', 
-      packages 
-    };
-  } catch (fallbackError: any) {
-    console.error('All fetch attempts failed:', fallbackError);
-    // Throw original error or a comprehensive error message
-    const mainMsg = apiError 
-      ? apiError.message 
-      : lastProxyError 
-        ? lastProxyError.message 
-        : fallbackError.message || 'Lỗi kết nối hoặc không tìm thấy bảng tính.';
-    throw new Error(
-      `${mainMsg} (Vui lòng đảm bảo file Sheet đã được chia sẻ ở chế độ "Bất kỳ ai có liên kết đều có thể xem").`
-    );
+    lastProxyError = proxyError;
   }
+
+  // Final fallback error handling
+  const mainMsg = apiError 
+    ? apiError.message 
+    : lastProxyError 
+      ? lastProxyError.message 
+      : 'Lỗi kết nối hoặc không tìm thấy bảng tính.';
+  throw new Error(
+    `${mainMsg} (Vui lòng đảm bảo file Sheet đã được chia sẻ ở chế độ "Bất kỳ ai có liên kết đều có thể xem").`
+  );
 };
 
 export interface GoogleSheetTab {
@@ -598,7 +733,7 @@ export interface GoogleSheetTab {
 /**
  * Public scraper to fetch sheet tabs from a public Google Sheet using multi-proxy loops.
  */
-export const fetchPublicSheetsScraper = async (spreadsheetId: string): Promise<GoogleSheetTab[]> => {
+export const fetchPublicSheetsScraper = async (spreadsheetId: string, currentGid?: string): Promise<GoogleSheetTab[]> => {
   try {
     const html = await fetchPublicHtmlWithProxies(spreadsheetId);
 
@@ -657,12 +792,18 @@ export const fetchPublicSheetsScraper = async (spreadsheetId: string): Promise<G
       return uniqueTabs;
     }
   } catch (err: any) {
-    console.error('fetchPublicSheetsScraper error:', err);
+    console.warn('fetchPublicSheetsScraper warning:', err);
     if (err.message && err.message.includes('chế độ riêng tư')) {
       throw err;
     }
   }
-  return [{ sheetId: '0', title: 'Bảng tính công khai (Tự động)' }];
+  
+  // Return the current/parsed GID if available, so user has their correct sheet/tab as an option
+  const fallbackGid = currentGid || '0';
+  const fallbackTitle = currentGid && currentGid !== '0' 
+    ? `Bảng tính công khai (Mã GID: ${currentGid})` 
+    : 'Bảng tính công khai (Tự động)';
+  return [{ sheetId: fallbackGid, title: fallbackTitle }];
 };
 
 /**
@@ -670,11 +811,12 @@ export const fetchPublicSheetsScraper = async (spreadsheetId: string): Promise<G
  */
 export const fetchSpreadsheetSheets = async (
   spreadsheetId: string,
-  accessToken: string | null
+  accessToken: string | null,
+  currentGid?: string
 ): Promise<GoogleSheetTab[]> => {
   // If we don't have an accessToken, use the public scraper
   if (!accessToken) {
-    return await fetchPublicSheetsScraper(spreadsheetId);
+    return await fetchPublicSheetsScraper(spreadsheetId, currentGid);
   }
 
   try {
@@ -717,7 +859,7 @@ export const fetchSpreadsheetSheets = async (
     }));
   } catch (error: any) {
     console.warn('fetchSpreadsheetSheets API failed. Trying public fallback...', error);
-    return await fetchPublicSheetsScraper(spreadsheetId);
+    return await fetchPublicSheetsScraper(spreadsheetId, currentGid);
   }
 };
 

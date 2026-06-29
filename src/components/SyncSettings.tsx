@@ -78,15 +78,13 @@ export default function SyncSettings({
       setIsLoadingTabs(true);
       setTabError(null);
       try {
-        const fetchedTabs = await fetchSpreadsheetSheets(tempSpreadsheetId.trim(), accessToken);
+        const fetchedTabs = await fetchSpreadsheetSheets(tempSpreadsheetId.trim(), accessToken, tempGid);
         if (isMounted) {
           setTabs(fetchedTabs);
-          // Auto select the first tab if the current selected GID is not present in the new tabs list
-          if (fetchedTabs.length > 0) {
-            const hasCurrentGid = fetchedTabs.some(t => String(t.sheetId) === String(tempGid));
-            if (!hasCurrentGid) {
-              setTempGid(fetchedTabs[0].sheetId);
-            }
+          // Auto select the first tab ONLY if the current GID is empty.
+          // This prevents overwriting user-specified or parsed GID values.
+          if (fetchedTabs.length > 0 && !tempGid) {
+            setTempGid(fetchedTabs[0].sheetId);
           }
         }
       } catch (err: any) {
