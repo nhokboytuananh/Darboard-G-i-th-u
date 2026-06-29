@@ -42,12 +42,16 @@ export default function App() {
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(INITIAL_ACTIVITY_LOGS);
 
   // Sync State
-  const [syncInfo, setSyncInfo] = useState<GoogleSheetSyncInfo>({
-    spreadsheetId: '1lrq4Brn1O3OdQzUeO7OrNoQEynBuGSt6RteNKqpQTCs', // User's custom sheet
-    gid: '1285066285',
-    sheetName: '',
-    lastSyncedAt: null,
-    syncStatus: 'idle',
+  const [syncInfo, setSyncInfo] = useState<GoogleSheetSyncInfo>(() => {
+    const savedSpreadsheetId = localStorage.getItem('pro_track_spreadsheet_id');
+    const savedGid = localStorage.getItem('pro_track_gid');
+    return {
+      spreadsheetId: savedSpreadsheetId || '1lrq4Brn1O3OdQzUeO7OrNoQEynBuGSt6RteNKqpQTCs', // User's custom sheet or default
+      gid: savedGid || '1285066285',
+      sheetName: '',
+      lastSyncedAt: null,
+      syncStatus: 'idle',
+    };
   });
 
   // UI Navigation Tabs
@@ -180,6 +184,9 @@ export default function App() {
 
   // Callback: Change target SpreadsheetId / Gid config
   const handleSpreadsheetConfigChange = (newSpreadsheetId: string, newGid: string) => {
+    localStorage.setItem('pro_track_spreadsheet_id', newSpreadsheetId);
+    localStorage.setItem('pro_track_gid', newGid);
+
     setSyncInfo(prev => ({
       ...prev,
       spreadsheetId: newSpreadsheetId,
