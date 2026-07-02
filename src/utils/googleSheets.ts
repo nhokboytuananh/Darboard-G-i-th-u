@@ -227,14 +227,11 @@ export const parseSheetData = (rows: string[][]): BidPackage[] => {
     const lcntDurationVal = getValue(colIndexMap.lcntDuration).trim();
     let lcntDuration: number | undefined = undefined;
 
-    // Only calculate LCNT duration for packages that have an approval date (results)
-    if (approvalDate && lcntDurationVal) {
-      const isDateStr = lcntDurationVal.includes('/') || lcntDurationVal.includes('-') || lcntDurationVal.includes('.');
-      const isLargeNumber = /^\d+$/.test(lcntDurationVal) && parseInt(lcntDurationVal, 10) > 365;
-
-      if (!isDateStr && !isLargeNumber) {
+    if (lcntDurationVal) {
+      const isNumeric = /^-?\d+([.,]\d+)?$/.test(lcntDurationVal);
+      if (isNumeric) {
         const parsed = parseNum(lcntDurationVal);
-        if (parsed > 0 && parsed <= 365) {
+        if (parsed >= 0 && parsed <= 100) {
           lcntDuration = parsed;
         }
       }
