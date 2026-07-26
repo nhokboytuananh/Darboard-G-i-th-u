@@ -21,6 +21,7 @@ export interface BidPackage {
   approvalDate?: string; // Ngày phê duyệt KQLCNT
   contractDate?: string; // Ngày ký hợp đồng
   actualStatus?: string; // Thực trạng (đến ngày nay)
+  cvSymbol?: string; // Ký hiệu CV
   lcntDuration?: number; // Thời gian LCNT (ngày)
 }
 
@@ -51,3 +52,27 @@ export interface GoogleSheetSyncInfo {
   syncStatus: 'idle' | 'syncing' | 'success' | 'error';
   errorMessage?: string;
 }
+
+export const isPackageCancelled = (pkg: BidPackage): boolean => {
+  const normalize = (str?: string) =>
+    (str || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .trim();
+
+  const actualStr = normalize(pkg.actualStatus);
+  const cvStr = normalize(pkg.cvSymbol);
+  const notesStr = normalize(pkg.notes);
+  const nameStr = normalize(pkg.name);
+  const statusStr = normalize(pkg.status);
+
+  return (
+    actualStr.includes('huy') ||
+    cvStr.includes('huy') ||
+    notesStr.includes('huy') ||
+    nameStr.includes('huy thau') ||
+    statusStr.includes('huy')
+  );
+};

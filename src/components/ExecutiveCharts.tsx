@@ -14,7 +14,7 @@ import {
   Legend,
   LabelList,
 } from 'recharts';
-import { BidPackage, PackageType } from '../types';
+import { BidPackage, PackageType, isPackageCancelled } from '../types';
 import { Clock, AlertTriangle, Calendar, TrendingUp, X, ExternalLink, Award, FileText, Landmark, User } from 'lucide-react';
 
 interface ExecutiveChartsProps {
@@ -54,12 +54,14 @@ export default function ExecutiveCharts({ packages }: ExecutiveChartsProps) {
   }).filter((d) => d['Số lượng'] > 0);
 
   // 2. Data for Completion Status
-  const completedCount = packages.filter((p) => p.status === 'Hoàn thành').length;
-  const unfinishedCount = packages.length - completedCount;
+  const cancelledCount = packages.filter(isPackageCancelled).length;
+  const completedCount = packages.filter((p) => p.status === 'Hoàn thành' && !isPackageCancelled(p)).length;
+  const unfinishedCount = packages.filter((p) => p.status !== 'Hoàn thành' && !isPackageCancelled(p)).length;
 
   const completionData = [
     { name: 'Đã hoàn thành', value: completedCount, color: '#10b981' }, // Emerald
     { name: 'Chưa hoàn thành', value: unfinishedCount, color: '#f59e0b' }, // Amber
+    { name: 'Đã hủy thầu', value: cancelledCount, color: '#f43f5e' }, // Rose
   ].filter(d => d.value > 0);
 
   // 3. Data for Contract Value (Giá HĐ) of top packages

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import ExecutiveKpis from './components/ExecutiveKpis';
 import ExecutiveCharts from './components/ExecutiveCharts';
+import CvSummaryReport from './components/CvSummaryReport';
 import PackageListTable from './components/PackageListTable';
 import SyncSettings from './components/SyncSettings';
 
@@ -400,6 +401,9 @@ export default function App() {
                 <>
                   {/* Metrics Row */}
                   <ExecutiveKpis packages={packages} />
+
+                  {/* CV Symbol Status Breakdown Presentation */}
+                  <CvSummaryReport packages={packages} />
 
                   {/* Recharts Row */}
                   <ExecutiveCharts packages={packages} />

@@ -84,6 +84,7 @@ export const parseSheetData = (rows: string[][]): BidPackage[] => {
     approvalDate: headers.findIndex(h => hasKeyword(h, 'phe duyet kqlcnt') || hasKeyword(h, 'ngay kqlcnt') || hasKeyword(h, 'ngay pd') || hasKeyword(h, 'phe duyet') || hasKeyword(h, 'kqlcnt')),
     contractDate: headers.findIndex(h => hasKeyword(h, 'ngay ky hop dong') || hasKeyword(h, 'ngay ky hd') || hasKeyword(h, 'ky hop dong') || hasKeyword(h, 'ngay ky contract') || hasKeyword(h, 'ngay ky') || hasKeyword(h, 'ky hd')),
     actualStatus: headers.findIndex(h => hasKeyword(h, 'thuc trang') || hasKeyword(h, 'den ngay nay') || hasKeyword(h, 'tinh hinh') || hasKeyword(h, 'hien tai') || hasKeyword(h, 'tinh trang')),
+    cvSymbol: headers.findIndex(h => hasKeyword(h, 'ky hieu cv') || hasKeyword(h, 'ky hieu') || h.includes('ky hieu') || h === 'cv'),
     lcntDuration: headers.findIndex(h => {
       const norm = h.toLowerCase();
       // Exclude irrelevant columns that happen to contain the word 'lcnt'
@@ -170,12 +171,41 @@ export const parseSheetData = (rows: string[][]): BidPackage[] => {
     const approvalDate = getValue(colIndexMap.approvalDate) || undefined;
     const contractDate = getValue(colIndexMap.contractDate) || undefined;
     const actualStatus = getValue(colIndexMap.actualStatus) || undefined;
+    let cvSymbol = getValue(colIndexMap.cvSymbol) || undefined;
 
-    const hasApprovalDate = approvalDate !== undefined && approvalDate !== '';
-    const hasContractDate = contractDate !== undefined && contractDate !== '';
-    const isCompleted = hasContractor || hasApprovalDate || hasContractDate;
+    if (!cvSymbol && row.some(cell => {
+      if (!cell) return false;
+      const c = cell.toLowerCase().trim();
+      return c === 'hủy' || c === 'huỷ' || c.includes('hủy thầu') || c.includes('huỷ thầu');
+    })) {
+      cvSymbol = 'Hủy';
+    }
 
-    let status: PackageStatus = isCompleted ? 'Hoàn thành' : 'Đang thực hiện';
+    const cvSymbolNorm = (cvSymbol || '').toLowerCase().trim();
+    const isCompletedCv = 
+      cvSymbolNorm === 'hđ' || 
+      cvSymbolNorm === 'hd' || 
+      cvSymbolNorm === 'ký hđ' || 
+      cvSymbolNorm === 'ky hd' ||
+      cvSymbolNorm === 'kqlcnt' ||
+      cvSymbolNorm === 'pdkqlcnt' ||
+      cvSymbolNorm === 'kql' ||
+      cvSymbolNorm.includes('kqlcnt');
+
+    const isFinishingCv = cvSymbolNorm.includes('tdhd') || cvSymbolNorm.includes('hthd');
+    const isCancelledCv = cvSymbolNorm.includes('hủy') || cvSymbolNorm.includes('huy');
+    const hasApprovedOrContract = Boolean(approvalDate && approvalDate.trim() !== '') || Boolean(contractDate && contractDate.trim() !== '');
+
+    let status: PackageStatus = 'Đang thực hiện';
+    if (isCancelledCv) {
+      status = 'Đang thực hiện';
+    } else if (isFinishingCv) {
+      status = 'Đang thực hiện';
+    } else if (hasApprovedOrContract || isCompletedCv) {
+      status = 'Hoàn thành';
+    } else if (cvSymbolNorm === 'mt' || cvSymbolNorm === 'xt' || cvSymbolNorm === 'dctl' || cvSymbolNorm === 'tdkq') {
+      status = 'Đang đấu thầu';
+    }
 
     const rawType = getValue(colIndexMap.type).trim().toUpperCase();
     let type: PackageType = 'Xây lắp';
@@ -216,7 +246,7 @@ export const parseSheetData = (rows: string[][]): BidPackage[] => {
     const budget = parseNum(getValue(colIndexMap.budget)) || 0;
     const contractValue = parseNum(getValue(colIndexMap.contractValue)) || undefined;
     const contractor = contractorVal || undefined;
-    const progress = parsePercent(getValue(colIndexMap.progress)) || (isCompleted ? 100 : 0);
+    const progress = parsePercent(getValue(colIndexMap.progress)) || (status === 'Hoàn thành' ? 100 : 0);
     const startDate = getValue(colIndexMap.startDate) || new Date().toISOString().split('T')[0];
     const endDate = getValue(colIndexMap.endDate) || new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString().split('T')[0];
     const manager = getValue(colIndexMap.manager) || 'Chưa phân công';
@@ -260,6 +290,7 @@ export const parseSheetData = (rows: string[][]): BidPackage[] => {
       approvalDate,
       contractDate,
       actualStatus,
+      cvSymbol,
       lcntDuration,
     });
   });

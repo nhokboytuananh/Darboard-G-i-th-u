@@ -18,7 +18,7 @@ import {
   ShieldCheck,
   ShieldAlert,
 } from 'lucide-react';
-import { BidPackage, UserRole, PackageType, PackageStatus } from '../types';
+import { BidPackage, UserRole, PackageType, PackageStatus, isPackageCancelled } from '../types';
 import { formatVN } from './ExecutiveKpis';
 
 interface PackageListTableProps {
@@ -193,9 +193,20 @@ export default function PackageListTable({
         pkg.manager.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchesType = selectedType === 'All' || pkg.type === selectedType;
-      const matchesStatus = selectedStatus === 'All' || pkg.status === selectedStatus;
+      
+      let matchesStatus = true;
+      if (selectedStatus === 'Hủy thầu') {
+        matchesStatus = isPackageCancelled(pkg);
+      } else if (selectedStatus === 'Hoàn thành') {
+        matchesStatus = pkg.status === 'Hoàn thành' && !isPackageCancelled(pkg);
+      } else if (selectedStatus === 'Đang thực hiện') {
+        matchesStatus = pkg.status === 'Đang thực hiện' && !isPackageCancelled(pkg);
+      } else if (selectedStatus !== 'All') {
+        matchesStatus = pkg.status === selectedStatus;
+      }
 
       return matchesSearch && matchesType && matchesStatus;
+
     });
 
   // Helper to resolve quarter group label based on approvalDate
@@ -412,6 +423,7 @@ export default function PackageListTable({
             <option value="Đang thực hiện">Đang thực hiện</option>
             <option value="Hoàn thành">Hoàn thành</option>
             <option value="Chậm tiến độ">Chậm tiến độ</option>
+            <option value="Hủy thầu">Hủy thầu</option>
           </select>
         </div>
 
@@ -498,10 +510,17 @@ export default function PackageListTable({
                                   </span>
                                   
                                   {/* Trạng thái gói thầu */}
-                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${getStatusColor(pkg.status)}`}>
-                                    {getStatusIcon(pkg.status)}
-                                    {pkg.status}
-                                  </span>
+                                  {isPackageCancelled(pkg) ? (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                      <X className="w-3 h-3 mr-1 text-rose-600" />
+                                      Hủy thầu
+                                    </span>
+                                  ) : (
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${getStatusColor(pkg.status)}`}>
+                                      {getStatusIcon(pkg.status)}
+                                      {pkg.status}
+                                    </span>
+                                  )}
 
                                   {/* Người phụ trách (Người thực hiện) */}
                                   <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-100">
