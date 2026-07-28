@@ -40,7 +40,7 @@ export default function PackageListTable({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<string>('All');
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
-  const [sortBy, setSortBy] = useState<'budget-desc' | 'budget-asc' | 'progress-desc' | 'name-asc'>('budget-desc');
+  const [sortBy, setSortBy] = useState<'budget-desc' | 'budget-asc' | 'progress-desc' | 'name-asc' | 'lcnt-desc'>('budget-desc');
 
   // Drawer / Modal Editor State
   const [selectedPackage, setSelectedPackage] = useState<BidPackage | null>(null);
@@ -318,6 +318,14 @@ export default function PackageListTable({
       if (sortBy === 'budget-asc') return (a.contractValue || a.budget) - (b.contractValue || b.budget);
       if (sortBy === 'progress-desc') return b.progress - a.progress;
       if (sortBy === 'name-asc') return a.name.localeCompare(b.name);
+      if (sortBy === 'lcnt-desc') {
+        const aHas = a.lcntDuration !== undefined && a.lcntDuration !== null && !isNaN(a.lcntDuration);
+        const bHas = b.lcntDuration !== undefined && b.lcntDuration !== null && !isNaN(b.lcntDuration);
+        if (aHas && bHas) return (b.lcntDuration!) - (a.lcntDuration!);
+        if (aHas && !bHas) return -1;
+        if (!aHas && bHas) return 1;
+        return 0;
+      }
       return 0;
     });
   };
@@ -437,6 +445,7 @@ export default function PackageListTable({
           >
             <option value="budget-desc">Giá HĐ (Giảm dần)</option>
             <option value="budget-asc">Giá HĐ (Tăng dần)</option>
+            <option value="lcnt-desc">Thời gian LCNT (Giảm dần)</option>
             <option value="progress-desc">Tiến độ (Cao nhất)</option>
             <option value="name-asc">Tên gói thầu (A-Z)</option>
           </select>

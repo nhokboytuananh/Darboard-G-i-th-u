@@ -582,9 +582,12 @@ export default function ExecutiveCharts({ packages }: ExecutiveChartsProps) {
                       <tbody className="divide-y divide-slate-150">
                         {[...selectedCell.packages]
                           .sort((a, b) => {
-                            const aVal = a.lcntDuration ?? 0;
-                            const bVal = b.lcntDuration ?? 0;
-                            return aVal - bVal;
+                            const aHas = a.lcntDuration !== undefined && a.lcntDuration !== null && !isNaN(a.lcntDuration);
+                            const bHas = b.lcntDuration !== undefined && b.lcntDuration !== null && !isNaN(b.lcntDuration);
+                            if (aHas && bHas) return (b.lcntDuration!) - (a.lcntDuration!);
+                            if (aHas && !bHas) return -1;
+                            if (!aHas && bHas) return 1;
+                            return 0;
                           })
                           .map((pkg) => {
                           const isPkgDelayed = pkg.lcntDuration !== undefined && pkg.lcntDuration > 40;

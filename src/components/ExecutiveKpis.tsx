@@ -102,6 +102,16 @@ export default function ExecutiveKpis({ packages }: ExecutiveKpisProps) {
     );
   });
 
+  // Sort inside modal list: calculated LCNT duration descending (largest on top), uncalculated at bottom
+  const sortedModalList = [...filteredModalList].sort((a, b) => {
+    const aHas = a.lcntDuration !== undefined && a.lcntDuration !== null && !isNaN(a.lcntDuration);
+    const bHas = b.lcntDuration !== undefined && b.lcntDuration !== null && !isNaN(b.lcntDuration);
+    if (aHas && bHas) return (b.lcntDuration!) - (a.lcntDuration!);
+    if (aHas && !bHas) return -1;
+    if (!aHas && bHas) return 1;
+    return 0;
+  });
+
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
@@ -393,7 +403,7 @@ export default function ExecutiveKpis({ packages }: ExecutiveKpisProps) {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-150 bg-white">
-                        {filteredModalList.map((pkg) => {
+                        {sortedModalList.map((pkg) => {
                           const isCancelled = isPackageCancelled(pkg);
                           const isDelayed = pkg.lcntDuration !== undefined && pkg.lcntDuration > 39 && !isCancelled;
 

@@ -261,7 +261,7 @@ export const parseSheetData = (rows: string[][]): BidPackage[] => {
       const isNumeric = /^-?\d+([.,]\d+)?$/.test(lcntDurationVal);
       if (isNumeric) {
         const parsed = parseNum(lcntDurationVal);
-        if (parsed >= 0 && parsed <= 100) {
+        if (parsed >= 0 && parsed <= 1000) {
           lcntDuration = parsed;
         }
       }
