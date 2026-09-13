@@ -52,6 +52,7 @@ export default function ExecutiveKpis({ packages }: ExecutiveKpisProps) {
   
   // Breakdown of completed packages by type
   const completedXayLap = completedPackages.filter(p => p.type === 'Xây lắp').length;
+  const completedHonHop = completedPackages.filter(p => p.type === 'Hỗn hợp').length;
   const completedThietBi = completedPackages.filter(p => p.type === 'Thiết bị').length;
   const completedPhiTuVan = completedPackages.filter(p => p.type === 'Phi tư vấn').length;
   const completedTuVan = completedPackages.filter(p => p.type === 'Tư vấn').length;
@@ -152,6 +153,12 @@ export default function ExecutiveKpis({ packages }: ExecutiveKpisProps) {
             <h3 className="text-2xl font-display font-bold text-emerald-600">{completedPackagesCount} <span className="text-sm font-medium text-emerald-500">gói thầu</span></h3>
             <div className="mt-1.5 pt-1.5 border-t border-slate-100 flex flex-wrap gap-x-1.5 gap-y-0.5 text-[10px] text-slate-500 font-medium">
               <span>XL: <strong className="text-slate-700 font-bold">{completedXayLap}</strong></span>
+              {completedHonHop > 0 && (
+                <>
+                  <span className="text-slate-300">|</span>
+                  <span>HH: <strong className="text-slate-700 font-bold">{completedHonHop}</strong></span>
+                </>
+              )}
               <span className="text-slate-300">|</span>
               <span>TB: <strong className="text-slate-700 font-bold">{completedThietBi}</strong></span>
               <span className="text-slate-300">|</span>

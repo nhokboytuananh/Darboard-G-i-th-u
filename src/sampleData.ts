@@ -185,6 +185,28 @@ export const INITIAL_BID_PACKAGES: BidPackage[] = [
     actualStatus: 'Chờ hoàn thiện cơ bản kết cấu thô để đàm phán.',
     lcntDuration: 15,
   },
+  {
+    id: 'GT-11/HH-2026',
+    name: 'Gói thầu số 01/HH - Cung cấp vật tư, thí nghiệm VTTB và thi công xây lắp công trình Đại tu lưới điện',
+    type: 'Hỗn hợp',
+    selectionMethod: 'Đấu thầu rộng rãi',
+    budget: 4200000000,
+    contractValue: 3980000000,
+    contractor: 'Công ty Cổ phần Xây lắp & Thương mại Điện lực',
+    progress: 80,
+    status: 'Hoàn thành',
+    startDate: '2026-04-10',
+    endDate: '2026-08-20',
+    manager: 'Tuấn Anh',
+    department: 'SCL CS1 (A Quân)',
+    disbursement: 3200000000,
+    notes: 'Gói thầu hỗn hợp cung cấp vật tư thiết bị và thi công xây lắp.',
+    approvalDate: '2026-05-15',
+    contractDate: '2026-05-25',
+    actualStatus: 'Đã ký HĐ',
+    cvSymbol: 'HĐ',
+    lcntDuration: 35,
+  },
 ];
 
 export const INITIAL_ACTIVITY_LOGS: ActivityLog[] = [

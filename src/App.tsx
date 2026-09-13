@@ -231,12 +231,12 @@ export default function App() {
         {/* Brand Logo Header */}
         <div className="p-6 border-b border-slate-800">
           <div className="flex items-center gap-2.5 text-white">
-            <div className="w-8 h-8 bg-indigo-500 rounded flex items-center justify-center font-bold font-display text-white shadow-md">
-              P
+            <div className="w-8 h-8 bg-indigo-600 rounded flex items-center justify-center text-white shadow-md">
+              <FileSpreadsheet className="w-4 h-4" />
             </div>
             <div>
-              <span className="font-bold tracking-tight text-md text-white font-display block">PRO-TRACK AI</span>
-              <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider block">Hệ thống Thầu</span>
+              <span className="font-bold tracking-tight text-sm text-white font-display block">Hệ thống Thầu</span>
+              <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider block">Giám sát tiến độ</span>
             </div>
           </div>
         </div>

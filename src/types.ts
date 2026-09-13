@@ -1,4 +1,4 @@
-export type PackageType = 'Xây lắp' | 'Thiết bị' | 'Tư vấn' | 'Phi tư vấn';
+export type PackageType = 'Xây lắp' | 'Hỗn hợp' | 'Thiết bị' | 'Tư vấn' | 'Phi tư vấn';
 
 export type PackageStatus = 'Lập kế hoạch' | 'Đang đấu thầu' | 'Đang thực hiện' | 'Hoàn thành' | 'Chậm tiến độ';
 

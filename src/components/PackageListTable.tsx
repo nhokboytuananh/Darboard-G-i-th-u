@@ -302,12 +302,13 @@ export default function PackageListTable({
   });
 
   // Pre-defined sorting order and labels for package types
-  const typeOrder: PackageType[] = ['Xây lắp', 'Thiết bị', 'Tư vấn', 'Phi tư vấn'];
+  const typeOrder: PackageType[] = ['Xây lắp', 'Hỗn hợp', 'Thiết bị', 'Tư vấn', 'Phi tư vấn'];
 
   const typeLabels: { [key in PackageType]: string } = {
     'Xây lắp': 'Gói thầu Xây lắp (XL, PC, EPC...)',
-    'Thiết bị': 'Gói thầu Thiết bị',
-    'Tư vấn': 'Gói thầu Tư vấn',
+    'Hỗn hợp': 'Gói thầu Hỗn hợp (HH)',
+    'Thiết bị': 'Gói thầu Thiết bị (MS, Hàng hóa...)',
+    'Tư vấn': 'Gói thầu Tư vấn (TV)',
     'Phi tư vấn': 'Gói thầu Phi tư vấn (PTV)',
   };
 
@@ -411,6 +412,7 @@ export default function PackageListTable({
           >
             <option value="All">Tất cả loại gói thầu</option>
             <option value="Xây lắp">Xây lắp</option>
+            <option value="Hỗn hợp">Hỗn hợp</option>
             <option value="Thiết bị">Thiết bị</option>
             <option value="Tư vấn">Tư vấn</option>
             <option value="Phi tư vấn">Phi tư vấn</option>
@@ -913,6 +915,7 @@ export default function PackageListTable({
                     className="w-full px-2 py-2 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-slate-50"
                   >
                     <option value="Xây lắp">Xây lắp</option>
+                    <option value="Hỗn hợp">Hỗn hợp</option>
                     <option value="Thiết bị">Thiết bị</option>
                     <option value="Tư vấn">Tư vấn</option>
                     <option value="Phi tư vấn">Phi tư vấn</option>

@@ -44,7 +44,10 @@ export const parseSheetData = (rows: string[][]): BidPackage[] => {
   const colIndexMap = {
     id: headers.findIndex(h => hasKeyword(h, 'ma') || hasKeyword(h, 'id') || hasKeyword(h, 'code')),
     name: headers.findIndex(h => hasKeyword(h, 'ten') || hasKeyword(h, 'goi thau') || hasKeyword(h, 'name')),
-    type: headers.findIndex(h => hasKeyword(h, 'loai') || hasKeyword(h, 'phan loai') || hasKeyword(h, 'type')),
+    type: headers.findIndex(h => {
+      if (hasKeyword(h, 'hop dong') || hasKeyword(h, 'hd')) return false;
+      return hasKeyword(h, 'loai') || hasKeyword(h, 'phan loai') || hasKeyword(h, 'type');
+    }),
     selectionMethod: headers.findIndex(h => hasKeyword(h, 'hinh thuc') || hasKeyword(h, 'lua chon') || hasKeyword(h, 'method')),
     budget: headers.findIndex(h => {
       if (hasKeyword(h, 'nha thau') || hasKeyword(h, 'contractor')) return false;
@@ -107,6 +110,23 @@ export const parseSheetData = (rows: string[][]): BidPackage[] => {
       );
     }),
   };
+
+  // Robust fallback for 'type' column (Col B in standard bidding sheets)
+  if (colIndexMap.type === -1) {
+    for (let c = 0; c < Math.min(5, (rows[0] || []).length); c++) {
+      let matchCount = 0;
+      for (let r = 1; r < Math.min(15, rows.length); r++) {
+        const val = (rows[r]?.[c] || '').replace(/\u00a0/g, ' ').trim().toUpperCase();
+        if (['XL', 'HH', 'MS', 'PTV', 'TV', 'PC', 'EPC'].includes(val)) {
+          matchCount++;
+        }
+      }
+      if (matchCount >= 2) {
+        colIndexMap.type = c;
+        break;
+      }
+    }
+  }
 
   const parsedPackages: BidPackage[] = [];
 
@@ -207,19 +227,57 @@ export const parseSheetData = (rows: string[][]): BidPackage[] => {
       status = 'Đang đấu thầu';
     }
 
-    const rawType = getValue(colIndexMap.type).trim().toUpperCase();
+    // 1. PRIMARY RULE: Strictly inspect the 'Loại' column first
+    // User requirement: "đọc chổ cột loại chổ nào chữ HH là gói hỗn hợp mà", "gói nào mà nhập XL là xây lắp, gói nào mà HH là hỗn hợp"
+    const rawType = getValue(colIndexMap.type).replace(/\u00a0/g, ' ').trim().toUpperCase();
+    const pkgNameUpper = (name || '').toUpperCase();
     let type: PackageType = 'Xây lắp';
     
     // Normalize and match Vietnamese bidding standard abbreviations
+    // XL -> Xây lắp; HH -> Hỗn hợp; PC/EPC -> Hỗn hợp; MS -> Thiết bị (Mua sắm); TV -> Tư vấn; PTV -> Phi tư vấn
     if (
+      rawType === 'HH' || 
+      rawType.startsWith('HH') ||
+      rawType.endsWith('HH') ||
+      rawType.includes('HH') ||
+      rawType === 'PC' ||
+      rawType === 'EPC' ||
+      rawType.includes('HỖN HỢP') || 
+      rawType.includes('HON HOP') ||
+      rawType.includes('MIXED')
+    ) {
+      type = 'Hỗn hợp';
+    } else if (
+      rawType === 'XL' || 
+      rawType.startsWith('XL') ||
+      rawType.endsWith('XL') ||
+      rawType.includes('XL') ||
+      rawType.includes('XÂY LẮP') || 
+      rawType.includes('XAY LAP') || 
+      rawType.includes('CONSTRUCTION') || 
+      rawType.includes('WORKS')
+    ) {
+      type = 'Xây lắp';
+    } else if (
       rawType === 'PTV' || 
+      rawType.startsWith('PTV') ||
+      rawType.includes('PTV') || 
       rawType.includes('PHI') || 
       rawType.includes('NON-CONSULT')
     ) {
       type = 'Phi tư vấn';
     } else if (
+      rawType === 'TV' || 
+      rawType.startsWith('TV') ||
+      rawType.includes('TV') ||
+      rawType.includes('TƯ VẤN') || 
+      rawType.includes('TU VAN')
+    ) {
+      type = 'Tư vấn';
+    } else if (
       rawType === 'MS' || 
-      rawType === 'HH' || 
+      rawType.startsWith('MS') ||
+      rawType.includes('MS') ||
       rawType.includes('BỊ') || 
       rawType.includes('THIET BI') || 
       rawType.includes('EQUIPMENT') || 
@@ -227,19 +285,46 @@ export const parseSheetData = (rows: string[][]): BidPackage[] => {
       rawType.includes('MUA SAM')
     ) {
       type = 'Thiết bị';
-    } else if (
-      rawType === 'TV' || 
-      (rawType.includes('TƯ VẤN') || rawType.includes('TU VAN'))
-    ) {
-      type = 'Tư vấn';
-    } else if (
-      rawType === 'XL' || 
-      rawType.includes('XÂY LẮP') || 
-      rawType.includes('XAY LAP') || 
-      rawType.includes('CONSTRUCTION') || 
-      rawType.includes('WORKS')
-    ) {
-      type = 'Xây lắp';
+    } else {
+      // 2. FALLBACK: If column 'Loại' is blank or unclassified, infer from package name
+      if (
+        pkgNameUpper.includes('/HH') || 
+        pkgNameUpper.includes('HH:') || 
+        pkgNameUpper.includes(' 26HH') || 
+        pkgNameUpper.includes('HỖN HỢP')
+      ) {
+        type = 'Hỗn hợp';
+      } else if (
+        pkgNameUpper.includes('/XL') || 
+        pkgNameUpper.includes('XL:') || 
+        pkgNameUpper.includes('XÂY LẮP')
+      ) {
+        type = 'Xây lắp';
+      } else if (
+        pkgNameUpper.includes('/PTV') || 
+        pkgNameUpper.includes('PTV-') || 
+        pkgNameUpper.includes('PTV:') ||
+        pkgNameUpper.includes('PHI TƯ VẤN')
+      ) {
+        type = 'Phi tư vấn';
+      } else if (
+        pkgNameUpper.includes('/TV') || 
+        pkgNameUpper.includes('TV-') || 
+        pkgNameUpper.includes('TV:') ||
+        pkgNameUpper.includes('TƯ VẤN')
+      ) {
+        type = 'Tư vấn';
+      } else if (
+        pkgNameUpper.includes('/MS') || 
+        pkgNameUpper.includes('MS-') || 
+        pkgNameUpper.includes('MS:') ||
+        pkgNameUpper.includes('MUA SẮM') || 
+        pkgNameUpper.includes('THIẾT BỊ')
+      ) {
+        type = 'Thiết bị';
+      } else {
+        type = 'Xây lắp';
+      }
     }
 
     const selectionMethod = getValue(colIndexMap.selectionMethod) || 'Đấu thầu rộng rãi';
@@ -505,9 +590,11 @@ export const fetchGoogleSheetData = async (
   const publicUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
   
   // Attempt 1: Direct public CSV fetch (Fastest, cleanest, uses native Google CORS)
+  const timestamp = Date.now();
   const urlsToTryDirectly = [
-    { url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/pub?output=csv&gid=${gid}`, name: 'Published Web CSV' },
-    { url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`, name: 'Export CSV' }
+    { url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${gid}&_t=${timestamp}`, name: 'Google GViz Realtime CSV' },
+    { url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}&_t=${timestamp}`, name: 'Export CSV' },
+    { url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/pub?output=csv&gid=${gid}&_t=${timestamp}`, name: 'Published Web CSV' }
   ];
 
   for (const item of urlsToTryDirectly) {

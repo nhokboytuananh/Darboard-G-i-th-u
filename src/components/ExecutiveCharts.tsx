@@ -42,8 +42,8 @@ export default function ExecutiveCharts({ packages }: ExecutiveChartsProps) {
   };
 
   // 1. Data for Package Count by Type
-  const types = ['Xây lắp', 'Thiết bị', 'Tư vấn', 'Phi tư vấn'];
-  const colors = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6']; // Emerald, Blue, Amber, Purple
+  const types: PackageType[] = ['Xây lắp', 'Hỗn hợp', 'Thiết bị', 'Tư vấn', 'Phi tư vấn'];
+  const colors = ['#10b981', '#0d9488', '#3b82f6', '#f59e0b', '#8b5cf6']; // Emerald, Teal, Blue, Amber, Purple
 
   const typeData = types.map((type) => {
     const matched = packages.filter((p) => p.type === type);
@@ -78,7 +78,7 @@ export default function ExecutiveCharts({ packages }: ExecutiveChartsProps) {
     });
 
   // --- BEGIN LCNT MEDIAN CALCULATION ---
-  const typeOrderList: PackageType[] = ['Xây lắp', 'Thiết bị', 'Tư vấn', 'Phi tư vấn'];
+  const typeOrderList: PackageType[] = ['Xây lắp', 'Hỗn hợp', 'Thiết bị', 'Tư vấn', 'Phi tư vấn'];
   
   // Helper to resolve quarter group label based on approvalDate
   const getQuarterGroup = (pkg: BidPackage): string => {
@@ -164,6 +164,7 @@ export default function ExecutiveCharts({ packages }: ExecutiveChartsProps) {
   quartersSorted.forEach((q) => {
     quarterTypeValues[q] = {
       'Xây lắp': [],
+      'Hỗn hợp': [],
       'Thiết bị': [],
       'Tư vấn': [],
       'Phi tư vấn': [],
@@ -200,6 +201,7 @@ export default function ExecutiveCharts({ packages }: ExecutiveChartsProps) {
   quartersSorted.forEach((q) => {
     quarterTypeStats[q] = {
       'Xây lắp': { median: 0, count: 0 },
+      'Hỗn hợp': { median: 0, count: 0 },
       'Thiết bị': { median: 0, count: 0 },
       'Tư vấn': { median: 0, count: 0 },
       'Phi tư vấn': { median: 0, count: 0 },
@@ -361,6 +363,7 @@ export default function ExecutiveCharts({ packages }: ExecutiveChartsProps) {
                 <tr className="bg-slate-50 border-b border-slate-200">
                   <th className="py-2.5 px-3 font-semibold text-slate-700">Mốc thời gian / Quý</th>
                   <th className="py-2.5 px-3 font-semibold text-emerald-700">Xây lắp</th>
+                  <th className="py-2.5 px-3 font-semibold text-teal-700">Hỗn hợp</th>
                   <th className="py-2.5 px-3 font-semibold text-blue-700">Thiết bị</th>
                   <th className="py-2.5 px-3 font-semibold text-amber-700">Tư vấn</th>
                   <th className="py-2.5 px-3 font-semibold text-purple-700">Phi tư vấn (PTV)</th>
@@ -468,6 +471,7 @@ export default function ExecutiveCharts({ packages }: ExecutiveChartsProps) {
                       formatter={(val) => [`${val} ngày`, 'Thời gian LCNT (Trung vị)']}
                     />
                     <Bar dataKey="Xây lắp" fill="#10b981" radius={[2, 2, 0, 0]} />
+                    <Bar dataKey="Hỗn hợp" fill="#0d9488" radius={[2, 2, 0, 0]} />
                     <Bar dataKey="Thiết bị" fill="#3b82f6" radius={[2, 2, 0, 0]} />
                     <Bar dataKey="Tư vấn" fill="#f59e0b" radius={[2, 2, 0, 0]} />
                     <Bar dataKey="Phi tư vấn" fill="#8b5cf6" radius={[2, 2, 0, 0]} />
